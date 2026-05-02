@@ -6,3 +6,17 @@ dist/
 .env.*
 !.env.example
 YC_APPLICATION_S26.md
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
+
+# Editor
+.vscode-test
