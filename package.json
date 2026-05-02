@@ -1,0 +1,37 @@
+{
+  "name": "brain-os",
+  "version": "0.1.0",
+  "description": "Operational memory for AI agents. Persistent entity state, decisions, patterns, and priorities across sessions.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "brain-os": "./bin/brain-os.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "serve": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "ai-memory",
+    "ai-agents",
+    "operational-memory",
+    "model-context-protocol"
+  ],
+  "author": "Tasha Amanda",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "openai": "^6.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Brain OS Entity",
+  "description": "Operational state of a tracked entity — project, deal, campaign, account, or any persistent work object",
+  "type": "object",
+  "required": ["id", "name", "type", "status", "mode", "momentum", "priority", "next_move", "last_updated"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier, lowercase with hyphens"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "type": {
+      "type": "string",
+      "description": "Entity type — project, deal, campaign, account, feature, etc."
+    },
+    "status": {
+      "type": "string",
+      "description": "Free-text current state"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["active", "parked", "incubating", "archived"],
+      "description": "Intent: active = working on it, parked = intentionally paused, incubating = thinking stage, archived = done or killed"
+    },
+    "mode_reason": {
+      "type": ["string", "null"],
+      "description": "Why this mode — required for parked/incubating"
+    },
+    "momentum": {
+      "type": "string",
+      "enum": ["high", "medium", "low", "stalled"],
+      "description": "Is this entity actually moving forward?"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "Strategic importance right now"
+    },
+    "blocked": {
+      "type": ["string", "null"],
+      "description": "Current blocker, null if none"
+    },
+    "next_move": {
+      "type": "string",
+      "description": "Concrete next action — not 'think about X'"
+    },
+    "last_decision": {
+      "type": ["string", "null"],
+      "description": "Most recent strategic decision"
+    },
+    "evidence_of_progress": {
+      "type": ["string", "null"],
+      "description": "What actually shipped or moved since last update"
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Unresolved strategic questions"
+    },
+    "related_entities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs of related entities"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Flexible key-value pairs — path, repo, owner, tags, etc.",
+      "additionalProperties": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date when entity was first created"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date of last update — used for staleness calculation"
+    }
+  }
+}

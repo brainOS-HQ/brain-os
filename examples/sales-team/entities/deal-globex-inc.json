@@ -1,0 +1,27 @@
+{
+  "id": "deal-globex-inc",
+  "name": "Globex Inc — Team Plan",
+  "type": "deal",
+  "status": "Initial call done. Sent proposal 12 days ago. No response.",
+  "mode": "active",
+  "momentum": "stalled",
+  "priority": "medium",
+  "blocked": "No response to proposal — unclear if lost or just slow",
+  "next_move": "Send follow-up email with case study. If no response in 5 days, call directly.",
+  "last_decision": "Priced at standard rate — no discount offered yet",
+  "evidence_of_progress": "Initial call showed strong interest in reporting features",
+  "open_questions": [
+    "Is this deal actually alive?",
+    "Should we offer a pilot instead of full commitment?"
+  ],
+  "related_entities": ["deal-acme-corp"],
+  "metadata": {
+    "deal_value": "$12,000/yr",
+    "stage": "proposal_sent",
+    "source": "referral — Acme Corp champion",
+    "champion": "Mike Torres, Head of Ops",
+    "days_in_pipeline": 22
+  },
+  "created_at": "2026-04-08",
+  "last_updated": "2026-04-18"
+}

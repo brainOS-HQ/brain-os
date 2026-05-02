@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.brain/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+YC_APPLICATION_S26.md

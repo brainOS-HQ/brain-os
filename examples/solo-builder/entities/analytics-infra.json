@@ -1,0 +1,22 @@
+{
+  "id": "analytics-infra",
+  "name": "Analytics Infrastructure",
+  "type": "project",
+  "status": "Concept only — needs event schema before building",
+  "mode": "incubating",
+  "mode_reason": "Depends on SaaS MVP having real users first — no point tracking events with zero traffic",
+  "momentum": "stalled",
+  "priority": "low",
+  "blocked": "No users to track yet",
+  "next_move": "Define 5 key events to track once MVP launches",
+  "last_decision": null,
+  "evidence_of_progress": null,
+  "open_questions": [
+    "PostHog vs Mixpanel vs custom?",
+    "What are the 5 most important events?"
+  ],
+  "related_entities": ["saas-mvp"],
+  "metadata": {},
+  "created_at": "2026-04-20",
+  "last_updated": "2026-04-20"
+}
