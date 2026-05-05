@@ -1,3 +1,12 @@
+export interface PlanStep {
+  id: string;
+  description: string;
+  status: "pending" | "active" | "done" | "skipped";
+  evidence?: string | null;
+  skipped_reason?: string | null;
+  completed_at?: string | null;
+}
+
 export interface Entity {
   id: string;
   name: string;
@@ -13,6 +22,7 @@ export interface Entity {
   evidence_of_progress: string | null;
   open_questions: string[];
   related_entities: string[];
+  plan?: PlanStep[];
   metadata: Record<string, unknown>;
   created_at: string;
   last_updated: string;

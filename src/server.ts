@@ -8,6 +8,9 @@ import { detectPatterns } from "./tools/pattern-detect.js";
 import { commitMemory } from "./tools/memory-commit.js";
 import { checkMemory } from "./tools/memory-check.js";
 import { recallByMeaning } from "./tools/semantic-recall.js";
+import { readAuditLog } from "./tools/audit-read.js";
+import { setPlan, advancePlan, addPlanSteps, readPlan } from "./tools/plan-update.js";
+import { checkDecision } from "./tools/decision-check.js";
 import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 
@@ -93,6 +96,19 @@ export function registerTools(server: McpServer) {
   );
 
   server.tool(
+    "decision_check",
+    "Check a proposed action against all active decisions. Returns 'clear', 'caution', or 'conflict'. Call this BEFORE taking actions that might contradict prior decisions. If status is 'conflict', do NOT proceed without explicit user confirmation to revisit the decision.",
+    {
+      proposed_action: z.string().describe("What you're about to do — describe the action clearly"),
+      entity_id: z.string().optional().describe("Check against decisions for a specific entity. Omit to check all."),
+    },
+    async ({ proposed_action, entity_id }) => {
+      const result = await checkDecision({ proposed_action, entity_id });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
     "focus_get",
     "Determine what to work on right now based on urgency, momentum, leverage, staleness, and dependencies. Returns prioritized recommendations.",
     {
@@ -169,6 +185,79 @@ export function registerTools(server: McpServer) {
           text: JSON.stringify({ ...result, provider: providerInfo.provider }, null, 2),
         }],
       };
+    }
+  );
+
+  server.tool(
+    "audit_log",
+    "Read the audit trail of all memory mutations. Shows what changed, when, by which tool, and what the before/after state was. Use to understand history, verify integrity, or debug unexpected state.",
+    {
+      entity_id: z.string().optional().describe("Filter by entity ID"),
+      tool: z.string().optional().describe("Filter by tool name (entity_update, decision_log, memory_commit, plan_update)"),
+      last_n: z.number().optional().describe("Number of recent entries to return (default 20)"),
+    },
+    async ({ entity_id, tool, last_n }) => {
+      const result = await readAuditLog({ entity_id, tool, last_n });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  // ──────────────────────────────────────────────
+  // PLAN — ordered work continuity
+  // ──────────────────────────────────────────────
+
+  server.tool(
+    "plan_set",
+    "Set an ordered plan for an entity. Replaces any existing plan. Step 1 becomes the active next_move. Use when committing to a sequence of work — not for brainstorming. Each step should be a concrete, completable action.",
+    {
+      entity_id: z.string().describe("Entity to set the plan for"),
+      steps: z.array(z.string()).min(1).describe("Ordered list of concrete steps. First step becomes active immediately."),
+    },
+    async ({ entity_id, steps }) => {
+      const result = await setPlan({ entity_id, steps });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "plan_advance",
+    "Complete or skip the current plan step. Requires evidence (for complete) or reason (for skip). Automatically promotes the next pending step to active and updates next_move. Enforces continuity — you cannot skip without explaining why.",
+    {
+      entity_id: z.string().describe("Entity whose plan to advance"),
+      step_id: z.string().describe("Step ID to complete or skip (e.g. 'step-001')"),
+      action: z.enum(["complete", "skip"]).describe("Complete (with evidence) or skip (with reason)"),
+      evidence: z.string().optional().describe("Required for complete — what proved this step is done"),
+      reason: z.string().optional().describe("Required for skip — why this step is being skipped"),
+    },
+    async ({ entity_id, step_id, action, evidence, reason }) => {
+      const result = await advancePlan({ entity_id, step_id, action, evidence, reason });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "plan_add",
+    "Add steps to an existing plan. Use when new work is discovered mid-plan. Steps can be added at the end or immediately after the current active step.",
+    {
+      entity_id: z.string().describe("Entity to add steps to"),
+      steps: z.array(z.string()).min(1).describe("Steps to add"),
+      position: z.enum(["end", "after_current"]).optional().describe("Where to insert: 'end' (default) or 'after_current'"),
+    },
+    async ({ entity_id, steps, position }) => {
+      const result = await addPlanSteps({ entity_id, steps, position });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "plan_read",
+    "Read the current plan for an entity. Shows all steps, their status, the active step, and overall progress.",
+    {
+      entity_id: z.string().describe("Entity to read the plan for"),
+    },
+    async ({ entity_id }) => {
+      const result = await readPlan(entity_id);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 }

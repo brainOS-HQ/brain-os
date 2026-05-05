@@ -21,6 +21,7 @@
     "model-context-protocol"
   ],
   "author": "Tasha Amanda",
+  "homepage": "https://brainos-hq.com",
   "license": "MIT",
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

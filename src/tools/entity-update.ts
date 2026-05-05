@@ -2,6 +2,7 @@ import { Entity } from "../schemas/entity.js";
 import { readJsonFile, writeJsonFile, getEntitiesDir } from "../utils/file-store.js";
 import { calculateStaleness, today } from "../utils/staleness.js";
 import { embedEntity } from "../utils/embeddings.js";
+import { audit } from "../utils/audit.js";
 
 interface EntityUpdates {
   status?: string;
@@ -32,6 +33,8 @@ export async function updateEntity(
     throw new Error(`Entity "${entityId}" not found.`);
   }
 
+  const before = { ...entity };
+
   if ((updates.mode === "parked" || updates.mode === "incubating") && !updates.mode_reason && !entity.mode_reason) {
     throw new Error(`mode_reason is required when setting mode to "${updates.mode}".`);
   }
@@ -49,6 +52,12 @@ export async function updateEntity(
   const staleness = calculateStaleness(entity.last_updated);
 
   await writeJsonFile(path, entity);
+
+  await audit("entity_update", "update", changes.join("; "), {
+    entity_id: entityId,
+    before,
+    after: entity,
+  });
 
   embedEntity(entityId, entity as unknown as Record<string, unknown>).catch(() => {});
 

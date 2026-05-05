@@ -117,7 +117,14 @@ export async function generateStatusBrief(): Promise<string> {
     lines.push("───────────────────────────────────────");
     for (const e of active) {
       const s = calculateStaleness(e.last_updated);
-      lines.push(`  ${e.name} | ${e.momentum} momentum | ${s.label} | ${e.blocked ? "BLOCKED" : "clear"}`);
+      let planInfo = "";
+      if (e.plan && e.plan.length > 0) {
+        const done = e.plan.filter((p) => p.status === "done").length;
+        const total = e.plan.length;
+        const current = e.plan.find((p) => p.status === "active");
+        planInfo = ` | plan: ${done}/${total}${current ? ` → ${current.description}` : ""}`;
+      }
+      lines.push(`  ${e.name} | ${e.momentum} momentum | ${s.label} | ${e.blocked ? "BLOCKED" : "clear"}${planInfo}`);
     }
     lines.push("");
   }

@@ -1,5 +1,7 @@
 # Brain OS
 
+**[brainos-hq.com](https://brainos-hq.com)**
+
 Persistent operational memory for AI agents. Decisions, priorities, and project state that survive across sessions.
 
 ## What is this?
@@ -55,11 +57,17 @@ Add to your MCP config:
 | `entity_read` | Read operational state of one or all tracked entities |
 | `entity_update` | Update entity state — status, momentum, blockers, next moves |
 | `decision_log` | Log a strategic decision with reasoning and alternatives |
+| `decision_check` | Check a proposed action against active decisions — returns clear/caution/conflict |
 | `focus_get` | Get prioritized recommendations on what to work on |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |
 | `semantic_recall` | Search memory by meaning using natural language |
+| `audit_log` | Read the full mutation history — what changed, when, by whom |
+| `plan_set` | Set an ordered plan for an entity — step 1 becomes active next_move |
+| `plan_advance` | Complete or skip a step (requires evidence/reason) — auto-promotes next |
+| `plan_add` | Add steps to an existing plan |
+| `plan_read` | View plan progress and current step |
 
 ## How it works
 

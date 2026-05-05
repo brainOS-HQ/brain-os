@@ -4,6 +4,7 @@ import { today } from "../utils/staleness.js";
 import { Entity } from "../schemas/entity.js";
 import { join } from "path";
 import { embedDecision } from "../utils/embeddings.js";
+import { audit } from "../utils/audit.js";
 
 interface DecisionInput {
   entity_id: string;
@@ -54,6 +55,20 @@ export async function logDecision(input: DecisionInput): Promise<{
 
   existing.push(decision);
   await writeJsonFile(decisionsFile, existing);
+
+  await audit("decision_log", "create", `Decision: ${input.decision}`, {
+    entity_id: input.entity_id,
+    before: null,
+    after: decision,
+  });
+
+  if (superseded.length > 0) {
+    await audit("decision_log", "supersede", `Superseded: ${superseded.join(", ")}`, {
+      entity_id: input.entity_id,
+      before: superseded,
+      after: id,
+    });
+  }
 
   let entity_updated = false;
   const entityPath = join(getEntitiesDir(), `${input.entity_id}.json`);

@@ -66,6 +66,22 @@
       "items": { "type": "string" },
       "description": "IDs of related entities"
     },
+    "plan": {
+      "type": "array",
+      "description": "Ordered sequence of committed work steps. First pending step auto-promotes to active. Provides continuity across sessions.",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "status"],
+        "properties": {
+          "id": { "type": "string", "description": "Step ID (e.g. step-001)" },
+          "description": { "type": "string", "description": "Concrete, completable action" },
+          "status": { "type": "string", "enum": ["pending", "active", "done", "skipped"] },
+          "evidence": { "type": ["string", "null"], "description": "What proved this step is done" },
+          "skipped_reason": { "type": ["string", "null"], "description": "Why this step was skipped" },
+          "completed_at": { "type": ["string", "null"], "format": "date", "description": "When this step was completed or skipped" }
+        }
+      }
+    },
     "metadata": {
       "type": "object",
       "description": "Flexible key-value pairs — path, repo, owner, tags, etc.",

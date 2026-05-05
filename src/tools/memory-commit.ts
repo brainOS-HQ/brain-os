@@ -4,6 +4,7 @@ import { today } from "../utils/staleness.js";
 import { logDecision } from "./decision-log.js";
 import { join } from "path";
 import { embedSession } from "../utils/embeddings.js";
+import { audit, setSessionId } from "../utils/audit.js";
 
 interface CommitInput {
   session_summary: string;
@@ -31,6 +32,7 @@ interface CommitResult {
 export async function commitMemory(input: CommitInput): Promise<CommitResult> {
   const todayStr = today();
   const sessionId = `session-${todayStr}-${Date.now()}`;
+  setSessionId(sessionId);
   const entitiesUpdated: string[] = [];
 
   // Update last_updated on all touched entities
@@ -85,6 +87,11 @@ export async function commitMemory(input: CommitInput): Promise<CommitResult> {
 
   const sessionPath = join(getSessionsDir(), `${sessionId}.json`);
   await writeJsonFile(sessionPath, sessionRecord);
+
+  await audit("memory_commit", "commit", input.session_summary, {
+    before: null,
+    after: sessionRecord,
+  });
 
   embedSession(sessionId, input.session_summary).catch(() => {});
 
