@@ -1,6 +1,6 @@
 {
   "name": "brain-os",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Operational memory for AI agents. Persistent entity state, decisions, patterns, and priorities across sessions.",
   "type": "module",
   "main": "dist/index.js",
