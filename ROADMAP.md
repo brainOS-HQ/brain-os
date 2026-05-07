@@ -48,7 +48,7 @@ Strategy: Don't build "more memory." Build trust, enforcement, and continuity.
 
 ## Phase 2 — Optional Cloud Sync (~12–18mo, after ~1k+ active local installs)
 
-Local-first stays the default forever. Cloud is opt-in, end-to-end encrypted, and only built once users explicitly ask for it.
+Cloud is opt-in, end-to-end encrypted, and only built once users explicitly ask for it. Local-first is the default today and remains the priority.
 
 - [ ] **Multi-device sync** — same `.brain/` state across laptop, desktop, mobile agents
 - [ ] **Encrypted sync protocol** — E2E encryption, server cannot read entity content
