@@ -19,22 +19,21 @@ Brain OS is an [MCP server](https://modelcontextprotocol.io) that works with any
 ## Quick start
 
 ```bash
-# Install globally
-npm install -g brain-os
-
-# Initialize in your project
-brain-os init
-
-# Or run directly
+# In your project
 npx brain-os init
 ```
 
-This creates a `.brain/` directory with your entity, decision, and pattern stores.
+This does two things:
+
+1. **Creates a `.brain/` directory** with your entity, decision, and pattern stores.
+2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/focus`, `/decide`, etc. directly in Claude Code.
+
+Skip the slash commands with `npx brain-os init --no-commands` if you only want the MCP server.
 
 ### Connect to Claude Code
 
 ```bash
-claude mcp add brain-os node /path/to/brain-os/dist/index.js
+claude mcp add brain-os -- npx brain-os serve
 ```
 
 ### Connect to Cursor / other MCP clients
@@ -44,8 +43,8 @@ Add to your MCP config:
 ```json
 {
   "brain-os": {
-    "command": "node",
-    "args": ["/path/to/brain-os/dist/index.js"]
+    "command": "npx",
+    "args": ["-y", "brain-os", "serve"]
   }
 }
 ```
@@ -68,6 +67,27 @@ Add to your MCP config:
 | `plan_advance` | Complete or skip a step (requires evidence/reason) — auto-promotes next |
 | `plan_add` | Add steps to an existing plan |
 | `plan_read` | View plan progress and current step |
+
+## Slash commands
+
+`brain-os init` installs 8 slash commands into `.claude/commands/` so the agent has a clear vocabulary for working with operational state. Each command instructs the agent to call the right MCP tools and present results consistently.
+
+| Command | What it does |
+|---------|-------------|
+| `/brain` | Project scanner: overview of all entities, freshness, decisions, alerts |
+| `/focus` | "What should I work on today, and why?" with evidence |
+| `/decide` | Capture a strategic decision (with conflict check before logging) |
+| `/strategy` | Strategic thinking partner: think a decision through before building |
+| `/wrap` | Session wrap: update entity state, capture decisions, detect momentum shifts |
+| `/patterns` | Detect patterns across entities: recurring blockers, avoidance, themes |
+| `/retro` | Weekly or monthly retrospective: what shipped, what stalled, what's hidden |
+| `/graph` | Show how entities connect, leverage opportunities, shared decisions |
+
+### Automatic namespace fallback
+
+If a command with the same name already exists in `.claude/commands/` (from another tool), Brain OS detects the collision and installs **all** its commands under the `/brain:` namespace instead — uniformly. So you'd get `/brain:focus`, `/brain:wrap`, etc. Your existing files are never overwritten.
+
+Re-running `init` is safe: existing Brain OS commands are preserved.
 
 ## How it works
 
