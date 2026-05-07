@@ -46,11 +46,32 @@ Strategy: Don't build "more memory." Build trust, enforcement, and continuity.
 - [ ] **Export/delete** — full data portability
 - [ ] **Encrypted local storage** — at-rest encryption for `.brain/`
 
+## Phase 2 — Optional Cloud Sync (~12–18mo, after ~1k+ active local installs)
+
+Local-first stays the default forever. Cloud is opt-in, end-to-end encrypted, and only built once users explicitly ask for it.
+
+- [ ] **Multi-device sync** — same `.brain/` state across laptop, desktop, mobile agents
+- [ ] **Encrypted sync protocol** — E2E encryption, server cannot read entity content
+- [ ] **Selective sync** — choose which projects sync, which stay local only
+- [ ] **Conflict resolution** — last-write-wins with audit-log-backed merge view
+- [ ] **Backup/recovery** — restore `.brain/` from any point in audit history
+
+Trigger: build only when ~1k+ local installs are asking for sync. Until then, do not build.
+
+## Phase 3 — Enforcement at Team Scale (the moat)
+
+Once cloud sync exists, enforcement becomes the enterprise wedge — auditable decision logs across multiple humans + agents working on shared state.
+
+- [ ] **Multi-actor decision log** — track which human/agent made each decision
+- [ ] **Cross-agent decision_check** — conflicts surface across the team, not just one user
+- [ ] **Compliance-grade audit export** — SOC2/GDPR-ready logs
+- [ ] **Org-level policy enforcement** — "no decisions without owner field" etc.
+
 ## Not building yet
 
-- Dashboard UI
-- Cloud/SaaS version
+- Dashboard UI (read-only `brain://status` resource is enough)
 - Slack/GitHub/Linear integrations
 - Generic chatbot memory
 - Agent personality system
 - Knowledge graph visualization
+- Public SaaS UI / web dashboard
