@@ -1,3 +1,14 @@
+<p align="center">
+  <img src="assets/hero.png" alt="Brain OS - Operational memory for AI agents" width="100%" />
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/brain-os"><img src="https://img.shields.io/npm/v/brain-os.svg?color=blue" alt="npm version" /></a>
+  <a href="https://github.com/brainOS-HQ/brain-os/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License" /></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-purple.svg" alt="MCP Compatible" /></a>
+  <a href="https://brainos-hq.com"><img src="https://img.shields.io/badge/site-brainos--hq.com-black.svg" alt="brainos-hq.com" /></a>
+</p>
+
 # Brain OS
 
 **[brainos-hq.com](https://brainos-hq.com)**
@@ -15,6 +26,28 @@ AI agents are powerful inside a session but start fresh every time. Brain OS giv
 - **Semantic recall** — search memory by meaning, not just ID
 
 Brain OS is an [MCP server](https://modelcontextprotocol.io) that works with any MCP-compatible client — Claude Code, Cursor, or any agent that speaks the protocol.
+
+## What it looks like in use
+
+Before the agent acts, it can check whether a proposed move conflicts with an existing decision:
+
+```
+> decision_check({ proposal: "switch to Postgres for the new service" })
+
+{
+  "verdict": "conflict",
+  "conflicting_decision": {
+    "id": "dec_2026_03_14_db_choice",
+    "decision": "Use SQLite for all local-first projects",
+    "reason": "Lower ops burden, no infra to run, fits single-user scope",
+    "rejected_alternatives": ["Postgres", "DuckDB"],
+    "logged_at": "2026-03-14"
+  },
+  "guidance": "Re-litigating a settled choice. Surface the prior reasoning to the user before proceeding."
+}
+```
+
+That's the wedge: structured state with enforcement, so agents stop re-opening questions you already answered.
 
 ## Quick start
 
