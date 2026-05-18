@@ -1,27 +1,81 @@
 import { readdir, readFile, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
+import { join, dirname } from "path";
 import { existsSync } from "fs";
+import { fileURLToPath } from "url";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-const BRAIN_DIR = process.env.BRAIN_DIR || join(process.cwd(), ".brain");
+let cachedBrainDir: string | null = null;
+let mcpServerRef: McpServer | null = null;
+
+function walkUpForBrain(startDir: string): string | null {
+  let dir = startDir;
+  while (true) {
+    const candidate = join(dir, ".brain");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+async function resolveBrainDir(): Promise<string> {
+  if (process.env.BRAIN_DIR) return process.env.BRAIN_DIR;
+
+  if (mcpServerRef) {
+    try {
+      const result = await mcpServerRef.server.listRoots();
+      for (const root of result.roots ?? []) {
+        if (root.uri.startsWith("file://")) {
+          const rootPath = fileURLToPath(root.uri);
+          const found = walkUpForBrain(rootPath);
+          if (found) return found;
+        }
+      }
+    } catch {
+      // Client doesn't support roots — fall through to walk-up
+    }
+  }
+
+  const walkUpResult = walkUpForBrain(process.cwd());
+  if (walkUpResult) return walkUpResult;
+
+  return join(process.cwd(), ".brain");
+}
+
+export function registerMcpServer(server: McpServer): void {
+  mcpServerRef = server;
+}
+
+export async function initBrainDir(): Promise<string> {
+  if (cachedBrainDir) return cachedBrainDir;
+  cachedBrainDir = await resolveBrainDir();
+  return cachedBrainDir;
+}
 
 export function getBrainDir(): string {
-  return BRAIN_DIR;
+  if (!cachedBrainDir) {
+    cachedBrainDir =
+      process.env.BRAIN_DIR ??
+      walkUpForBrain(process.cwd()) ??
+      join(process.cwd(), ".brain");
+  }
+  return cachedBrainDir;
 }
 
 export function getEntitiesDir(): string {
-  return join(BRAIN_DIR, "entities");
+  return join(getBrainDir(), "entities");
 }
 
 export function getDecisionsDir(): string {
-  return join(BRAIN_DIR, "decisions");
+  return join(getBrainDir(), "decisions");
 }
 
 export function getPatternsDir(): string {
-  return join(BRAIN_DIR, "patterns");
+  return join(getBrainDir(), "patterns");
 }
 
 export function getSessionsDir(): string {
-  return join(BRAIN_DIR, "sessions");
+  return join(getBrainDir(), "sessions");
 }
 
 export async function ensureDirs(): Promise<void> {

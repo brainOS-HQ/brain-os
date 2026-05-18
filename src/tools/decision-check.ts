@@ -1,6 +1,7 @@
 import { Decision } from "../schemas/decision.js";
 import { readJsonFile, listJsonFiles, getDecisionsDir } from "../utils/file-store.js";
 import { audit } from "../utils/audit.js";
+import { semanticRecall } from "../utils/embeddings.js";
 
 interface CheckInput {
   proposed_action: string;
@@ -105,6 +106,37 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
         conflict_reason: `Topic overlap detected. Verify this doesn't contradict the decision. Overlapping terms: ${topicOverlap.join(", ")}`,
       });
     }
+  }
+
+  // Semantic similarity layer — catches paraphrased conflicts text heuristics miss
+  const alreadyFlagged = new Set([
+    ...conflicts.map((c) => c.decision_id),
+    ...cautions.map((c) => c.decision_id),
+  ]);
+
+  try {
+    const semanticMatches = await semanticRecall(input.proposed_action, {
+      sourceKind: "decision",
+      k: 5,
+      threshold: 0.5,
+    });
+
+    for (const match of semanticMatches) {
+      const decision = active.find((d) => d.id === match.source_id);
+      if (!decision || alreadyFlagged.has(decision.id)) continue;
+
+      cautions.push({
+        decision_id: decision.id,
+        decision: decision.decision,
+        why_it_was_decided: decision.why,
+        decided_on: decision.date,
+        review_date: decision.review_date,
+        conflict_reason: `Semantically related (${(match.similarity * 100).toFixed(0)}% similarity). Verify this action is compatible with the decision.`,
+      });
+      alreadyFlagged.add(decision.id);
+    }
+  } catch {
+    // Semantic layer is best-effort — text heuristics provide baseline
   }
 
   let status: CheckResult["status"];
