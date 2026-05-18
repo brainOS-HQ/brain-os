@@ -24,13 +24,39 @@ export interface RecallResult {
 
 type EmbedFn = (text: string) => Promise<number[] | null>;
 
+export class EmbeddingsNotConfiguredError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "EmbeddingsNotConfiguredError";
+  }
+}
+
+const CONFIG_HINT =
+  "Set BRAIN_EMBEDDINGS in your MCP server env. Pick one:\n" +
+  '  "env": { "BRAIN_EMBEDDINGS": "local" }    // ~100MB on-device model, no API key\n' +
+  '  "env": { "BRAIN_EMBEDDINGS": "openai" }   // requires OPENAI_API_KEY\n' +
+  "Then restart your MCP client. Other tools (entity_update, decision_log, etc.) work without embeddings.";
+
 let activeProvider: { name: "local" | "openai"; embed: EmbedFn } | null = null;
+let initError: string | null = null;
 let initPromise: Promise<void> | null = null;
 
 async function initProvider(): Promise<void> {
-  // Try OpenAI first (higher quality, optional)
-  const openaiKey = process.env.OPENAI_API_KEY;
-  if (openaiKey) {
+  const mode = process.env.BRAIN_EMBEDDINGS?.toLowerCase().trim();
+
+  if (!mode) {
+    activeProvider = null;
+    initError = `BRAIN_EMBEDDINGS not set. ${CONFIG_HINT}`;
+    return;
+  }
+
+  if (mode === "openai") {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
+      activeProvider = null;
+      initError = "BRAIN_EMBEDDINGS=openai requires OPENAI_API_KEY in the MCP server env.";
+      return;
+    }
     try {
       const { default: OpenAI } = await import("openai");
       const client = new OpenAI({ apiKey: openaiKey });
@@ -45,39 +71,52 @@ async function initProvider(): Promise<void> {
           return res.data[0].embedding;
         },
       };
-      return;
-    } catch {
-      // Fall through to local
+    } catch (e) {
+      activeProvider = null;
+      initError = `Failed to initialize OpenAI embeddings: ${e instanceof Error ? e.message : String(e)}`;
     }
+    return;
   }
 
-  // Local embeddings (product default — no API key needed)
-  try {
-    const { pipeline } = await import("@huggingface/transformers");
-    const extractor = await pipeline(
-      "feature-extraction",
-      "Xenova/all-MiniLM-L6-v2",
-      { dtype: "fp32" }
-    );
-    activeProvider = {
-      name: "local",
-      embed: async (text: string) => {
-        const output = await extractor(text.slice(0, 8000), {
-          pooling: "mean",
-          normalize: true,
-        });
-        return Array.from(output.data as Float32Array);
-      },
-    };
-  } catch {
-    activeProvider = null;
+  if (mode === "local") {
+    try {
+      const { pipeline } = await import("@huggingface/transformers");
+      const extractor = await pipeline(
+        "feature-extraction",
+        "Xenova/all-MiniLM-L6-v2",
+        { dtype: "fp32" }
+      );
+      activeProvider = {
+        name: "local",
+        embed: async (text: string) => {
+          const output = await extractor(text.slice(0, 8000), {
+            pooling: "mean",
+            normalize: true,
+          });
+          return Array.from(output.data as Float32Array);
+        },
+      };
+    } catch (e) {
+      activeProvider = null;
+      initError = `Failed to initialize local embeddings: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    return;
   }
+
+  activeProvider = null;
+  initError = `Unknown BRAIN_EMBEDDINGS value: "${mode}". Use "local" or "openai".`;
 }
 
 async function getProvider() {
   if (!initPromise) initPromise = initProvider();
   await initPromise;
   return activeProvider;
+}
+
+async function getInitError(): Promise<string | null> {
+  if (!initPromise) initPromise = initProvider();
+  await initPromise;
+  return initError;
 }
 
 // --- Storage ---
@@ -176,7 +215,10 @@ export async function semanticRecall(
   const k = options?.k ?? 5;
   const threshold = options?.threshold ?? 0.3;
   const provider = await getProvider();
-  if (!provider) return [];
+  if (!provider) {
+    const reason = (await getInitError()) ?? "Embeddings provider not configured.";
+    throw new EmbeddingsNotConfiguredError(reason);
+  }
 
   const queryVec = await provider.embed(query);
   if (!queryVec) return [];
@@ -202,11 +244,26 @@ export async function semanticRecall(
   return scored;
 }
 
-export async function getProviderInfo(): Promise<{ provider: string; ready: boolean }> {
+export async function getProviderInfo(): Promise<{
+  provider: string;
+  ready: boolean;
+  configured_mode: string | null;
+  error?: string;
+}> {
   const provider = await getProvider();
+  const configured = process.env.BRAIN_EMBEDDINGS?.toLowerCase().trim() ?? null;
+  if (provider) {
+    return {
+      provider: provider.name,
+      ready: true,
+      configured_mode: configured,
+    };
+  }
   return {
-    provider: provider?.name ?? "none",
-    ready: provider !== null,
+    provider: "none",
+    ready: false,
+    configured_mode: configured,
+    error: (await getInitError()) ?? "Not initialized",
   };
 }
 
@@ -231,6 +288,10 @@ export async function embedDecision(decisionId: string, decision: Record<string,
     decision.chosen_direction,
     decision.proof_action,
   ].filter(Boolean);
+  const alternatives = decision.alternatives as Array<{option: string; rejected_because: string}> | undefined;
+  if (alternatives?.length) {
+    parts.push(...alternatives.map((a) => `rejected: ${a.option}`));
+  }
   await embedAndStore("decision", decisionId, parts.join(" | "));
 }
 

@@ -82,6 +82,31 @@ Add to your MCP config:
 }
 ```
 
+### Configure semantic search (optional)
+
+The `semantic_recall` tool needs an embeddings provider. Everything else (`entity_update`, `decision_log`, `plan_*`, etc.) works without one.
+
+Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
+
+```json
+{
+  "brain-os": {
+    "command": "npx",
+    "args": ["-y", "brain-os", "serve"],
+    "env": {
+      "BRAIN_EMBEDDINGS": "local"
+    }
+  }
+}
+```
+
+| Mode | What it does | Setup |
+|------|--------------|-------|
+| `local` | Downloads a ~100MB on-device model (`Xenova/all-MiniLM-L6-v2`). Runs on your CPU. No data leaves your machine. | Just set `BRAIN_EMBEDDINGS=local`. First call to `semantic_recall` triggers the model download (~30s on good wifi). |
+| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Set both `BRAIN_EMBEDDINGS=openai` and `OPENAI_API_KEY=sk-...` |
+
+If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with this config snippet. No silent downloads, no surprise API calls.
+
 ## Tools
 
 | Tool | Description |
@@ -136,9 +161,29 @@ Brain OS stores everything as local JSON files in a `.brain/` directory:
 
 No cloud. No database. No account. Your data stays on your machine.
 
+## Teams & sync
+
+Brain OS is single-user by design today. But because `.brain/` is just local JSON files, teams can share a brain through any synced filesystem — no product changes needed:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Git** — commit `.brain/` to the repo | Diff/merge tools, version history, intentional sync points | Manual `git pull`; merge conflicts on simultaneous edits |
+| **Dropbox / Drive shared folder** | Real-time-ish, no manual steps | Concurrent writes can create conflict files; `embeddings.json` rewrites often |
+| **NFS / SMB / S3 mount** | Truly real-time | Requires infrastructure setup |
+
+This works without any built-in sync because **every Brain OS tool call reads fresh from disk** — there's no in-memory cache to invalidate. Whatever your filesystem syncs, the next tool call sees. Same applies cross-tool: log a decision from Claude Code on Monday, open Cursor on Tuesday — same brain, both agents.
+
+Native encrypted team sync with proper merge semantics is on the v0.3 roadmap. The local-first foundation today is what makes that federation additive, not a retrofit.
+
 ## Auto-loaded status
 
 When an MCP client connects, Brain OS exposes a `brain://status` resource with an operational overview — active entities, alerts, top priority, and recent decisions. The agent starts every session with context, not amnesia.
+
+## Testing
+
+Brain OS v0.2.1 has no automated test suite yet. The 14 MCP tools are exercised through real daily use across 18 projects, but coverage is manual. Adding a smoke test suite for the core tools (`decision_log`, `decision_check`, `entity_update`, `semantic_recall`) is on the v0.3 roadmap.
+
+If you hit a bug, please open an issue with the tool, input, and output — that's the fastest path to a fix.
 
 ## License
 
