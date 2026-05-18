@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero.png" alt="Brain OS - Operational memory for AI agents" width="100%" />
+  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS - Operational memory for AI agents" width="100%" />
 </p>
 
 <p align="center">
@@ -173,7 +173,7 @@ Brain OS is single-user by design today. But because `.brain/` is just local JSO
 
 This works without any built-in sync because **every Brain OS tool call reads fresh from disk** — there's no in-memory cache to invalidate. Whatever your filesystem syncs, the next tool call sees. Same applies cross-tool: log a decision from Claude Code on Monday, open Cursor on Tuesday — same brain, both agents.
 
-Native encrypted team sync with proper merge semantics is on the v0.3 roadmap. The local-first foundation today is what makes that federation additive, not a retrofit.
+Native encrypted team sync with proper merge semantics is on the roadmap. The local-first foundation today is what makes that federation additive, not a retrofit.
 
 ## Auto-loaded status
 
@@ -181,7 +181,7 @@ When an MCP client connects, Brain OS exposes a `brain://status` resource with a
 
 ## Testing
 
-Brain OS v0.2.1 has no automated test suite yet. The 14 MCP tools are exercised through real daily use across 18 projects, but coverage is manual. Adding a smoke test suite for the core tools (`decision_log`, `decision_check`, `entity_update`, `semantic_recall`) is on the v0.3 roadmap.
+Brain OS has no automated test suite yet. The 14 MCP tools are exercised through real daily use across 18 projects, but coverage is manual. Adding a smoke test suite for the core tools (`decision_log`, `decision_check`, `entity_update`, `semantic_recall`) is on the roadmap.
 
 If you hit a bug, please open an issue with the tool, input, and output — that's the fastest path to a fix.
 
