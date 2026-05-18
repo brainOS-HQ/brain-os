@@ -4,18 +4,16 @@ Position: **Operational state layer for AI work** (not chat memory, not embeddin
 
 Strategy: Don't build "more memory." Build trust, enforcement, and continuity.
 
-## Differentiation Moats — the six gaps Brain OS owns
+## Why Brain OS is different
 
-These define the lane. Together they form the moat — any one gap alone is copyable, but each is a natural extension of the existing foundation, so a competitor would have to rebuild architecture to follow.
+These define the lane. Any one gap alone is copyable, but each is a natural extension of the existing foundation — so a competitor would have to rebuild architecture to follow.
 
-- [x] **1. Cross-tool coherence** — MCP-native + local `.brain/` means any MCP client (Claude Code, Cursor, Zed, Windsurf, VS Code) reads the same source of truth. **Shipped.** This is the strongest moat — the big AI vendors won't build it (lock-in), Supermemory's fact-extraction model can't share structured decisions, GSD is locked to Claude Code by design.
+- [x] **1. Cross-tool coherence** — MCP-native + local `.brain/` means any MCP client (Claude Code, Cursor, Zed, Windsurf, VS Code) reads the same source of truth. **Shipped.** The big AI vendors won't build it (lock-in incentives), Supermemory's fact-extraction model can't share structured decisions, GSD is locked to Claude Code by design.
 - [x] **2. Anti-sycophancy / agent pushback** — `decision_check` returns conflict/caution/clear with the original reasoning surfaced. Stops agents from agreeing with contradictions you didn't notice. **Shipped.** The inverse of every other AI tool, which tries to be more agreeable.
 - [ ] **3. Decision aging** — Decisions have timestamps; need `revisit_after` field + stale-decision surfacing. **Partial** — see Priority 2: Revisit triggers. Compounds with use: the longer you run Brain OS, the more valuable this becomes.
 - [ ] **4. Drift detection** — Entity has `vision`, `do_not_build`, `out_of_scope`; need `drift_check` tool that compares current `next_move` against original vision. **Partial** — primitives exist, comparison tool pending.
 - [ ] **5. Decision provenance for code** — Link decisions to commit hashes / file paths so "why is this function structured this way?" surfaces the original decision with reasoning + rejected alternatives. **Roadmap.**
 - [ ] **6. Federated patterns** — Opt-in community decision support: "other Brain OS users facing this decision typically chose X for these reasons." Local-first architecture makes federation safe and adjacent, not contradictory. **Phase 2** (~12-18mo, see below).
-
-**For pitches / interviews: claim Gaps 1 & 2 today. Tease 3 & 4 as imminent. Leave 5 & 6 in roadmap. Don't overclaim.**
 
 ## Priority 1 — Foundation (build now)
 
