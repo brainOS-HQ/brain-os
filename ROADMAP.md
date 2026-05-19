@@ -32,6 +32,7 @@ These define the lane. Any one gap alone is copyable, but each is a natural exte
 
 - [x] **`decision_check` tool** — agent calls before acting, returns "clear" / "caution" / "conflict"
 - [x] **Decision Lock enforcement** — conflicts block agent from proceeding without user confirmation
+- [x] **`decision_refresh` tool** — bump `review_date`, append evidence, change status. Metadata-only mutation; preserves audit-log fidelity (no more direct JSON edits)
 - [ ] **Revisit triggers** — auto-flag decisions when their review_date passes or new evidence appears
 
 ## Priority 3 — Schema Expansion

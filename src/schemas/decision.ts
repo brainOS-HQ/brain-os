@@ -14,4 +14,8 @@ export interface Decision {
   review_date: string;
   status: "active" | "superseded" | "archived";
   superseded_by?: string | null;
+  evidence_appended?: Array<{
+    date: string;
+    note: string;
+  }>;
 }

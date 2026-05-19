@@ -1,55 +1,58 @@
 # Brain OS : Pattern Engine
 
-Answer the question: "What patterns are showing up across my work?"
+"What patterns are showing up across my work?"
 
-Not analytics. Recognition. The kind of insight that changes how you see your own entities.
+Not analytics. Recognition.
+
+## REQUIRED FIRST READ
+
+Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. Tool routing is non-negotiable.
 
 ## Input
 
-Arguments: `$ARGUMENTS` (optional : "weekly" for recent patterns, "deep" for full analysis, or a specific theme to investigate)
+Arguments: `$ARGUMENTS` (optional : "weekly" for recent patterns, "deep" for full analysis, or a specific theme)
 
-## How
+## Primary tool sequence
 
-Call `pattern_detect` to get the current pattern report. If you need supporting evidence, call `entity_read` and review recent decisions.
-
-Do not read code, repos, or `CLAUDE.md` files.
+1. `mcp__brain-os__pattern_detect()` : current pattern report
+2. If empty: `mcp__brain-os__semantic_recall("recent patterns", source_kind="pattern")`
+3. Supporting evidence: `mcp__brain-os__entity_read()` for relevant entities
 
 ## What to look for
 
 ### 1. Momentum patterns
 - Which entities are moving? Which are stalled?
-- Is momentum concentrated in one area or scattered?
-- Is anything losing momentum that was recently high?
+- Is momentum concentrated or scattered?
+- Anything losing momentum that was recently high?
 
 ### 2. Blocker recurrence
-- Same blocker appearing in multiple entities
-- Same blocker appearing in the same entity across sessions
-- Blockers that are noted but never resolved
+- Same blocker across multiple entities
+- Same blocker in the same entity across sessions
+- Blockers noted but never resolved
 
 ### 3. Decision repetition
 - Strategic questions that keep being reopened
 - Decisions marked active but not acted on
-- Similar decisions being made independently across entities
+- Similar decisions made independently across entities
 
 ### 4. Theme emergence
-- What concepts appear across multiple entities?
-- What kind of work does the user keep gravitating toward?
-- Are there shared architectural needs?
+- Concepts appearing across multiple entities
+- What kind of work the user keeps gravitating toward
+- Shared architectural needs
 
 ### 5. Execution vs discussion gap
 - Entities with lots of decisions but little evidence of progress
 - High-status descriptions that don't match actual output
-- `next_move` fields that haven't changed across updates
+- `next_move` fields unchanged across updates
 
 ### 6. Avoidance signals
-- Entities that are "active" but haven't been updated in 3+ weeks
-- Entities where the next move keeps changing without anything shipping
-- Entities where open questions pile up without answers
+- "Active" entities not updated in 3+ weeks
+- Entities where `next_move` keeps changing without anything shipping
+- Open questions piling up without answers
 
 ### 7. Convergence opportunities
 - Entities that could share architecture, components, or patterns
 - Work in one entity that directly benefits another
-- Themes that suggest a bigger unified direction
 
 ## Output
 
@@ -61,11 +64,11 @@ Do not read code, repos, or `CLAUDE.md` files.
 ## Pattern 1: [name]
 
   Evidence:
-  - [specific data point]
+  - [specific data point from entity_read or pattern_detect]
   - [specific data point]
 
   Interpretation:
-  [what this pattern means : one paragraph max]
+  [one paragraph max]
 
   Risk:
   [what happens if this pattern continues]
@@ -84,21 +87,21 @@ Do not read code, repos, or `CLAUDE.md` files.
 ========================================
   EXISTING PATTERNS : STATUS CHECK
 ========================================
-  [for each pattern already in the log]
+  [for each pattern already logged]
   [still active? resolved? false positive?]
 ========================================
 ```
 
-## After the report
+## After output
 
-Ask the user which patterns to save. For confirmed ones, the agent should call the appropriate Brain OS tool to persist them (or update existing entries if the evidence has changed).
+Ask the user which patterns to save. For confirmed ones, the tool persists them (or update existing entries if evidence has changed).
 
 ## Rules
 
 - Patterns must have evidence. Never speculate without data.
-- Distinguish between "this happened once" and "this keeps happening".
+- Distinguish "this happened once" from "this keeps happening".
 - Do not moralize. State the pattern, the risk, and the action. No lectures.
-- If no new patterns are found, say so. "No new patterns. Current ones still hold."
+- If no new patterns, say so: "No new patterns. Current ones still hold."
 - If a logged pattern looks resolved or false, recommend removing it.
 - Maximum 5 patterns per report. Prioritize the most impactful.
-- Do not read code. MCP tools only.
+- MCP tools only. Name them in user-facing text.

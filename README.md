@@ -115,6 +115,7 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 | `entity_update` | Update entity state — status, momentum, blockers, next moves |
 | `decision_log` | Log a strategic decision with reasoning and alternatives |
 | `decision_check` | Check a proposed action against active decisions — returns clear/caution/conflict |
+| `decision_refresh` | Refresh an existing decision: bump review_date, append evidence, change status. Metadata only — does not mutate decision content. |
 | `focus_get` | Get prioritized recommendations on what to work on |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
@@ -129,6 +130,12 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 ## Slash commands
 
 `brain-os init` installs 8 slash commands into `.claude/commands/` so the agent has a clear vocabulary for working with operational state. Each command instructs the agent to call the right MCP tools and present results consistently.
+
+It also installs:
+
+- **`BRAIN_OS_PROTOCOL.md`** at `.claude/brain-os/PROTOCOL.md` (project) and `~/.claude/brain-os/PROTOCOL.md` (user). The protocol governs tool routing: when an agent runs a Brain OS slash command, it reads the protocol first, then calls `entity_read`/`plan_read`/`focus_get`/etc. as primary. Pulse files become fallback only.
+- **`brain-os-mode` subagent** at `.claude/agents/brain-os-mode.md`. When the main agent delegates Brain OS work to a subagent (e.g. Claude Code's Task tool), it picks up under the same protocol — no risk of subagents falling back to generic file search.
+- **Optional routing-guard hook** at `templates/hooks/brain-os-routing-guard.py`. Opt-in PreToolUse hook that warns if pulse files are read while a `.brain/` workspace exists. Install instructions are printed by `brain-os init`.
 
 | Command | What it does |
 |---------|-------------|
@@ -181,7 +188,7 @@ When an MCP client connects, Brain OS exposes a `brain://status` resource with a
 
 ## Testing
 
-Brain OS has no automated test suite yet. The 14 MCP tools are exercised through real daily use across 18 projects, but coverage is manual. Adding a smoke test suite for the core tools (`decision_log`, `decision_check`, `entity_update`, `semantic_recall`) is on the roadmap.
+Brain OS has no automated test suite yet. The 15 MCP tools are exercised through real daily use across 18 projects, but coverage is manual. Adding a smoke test suite for the core tools (`decision_log`, `decision_check`, `decision_refresh`, `entity_update`, `semantic_recall`) is on the roadmap.
 
 If you hit a bug, please open an issue with the tool, input, and output — that's the fastest path to a fix.
 

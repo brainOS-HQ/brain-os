@@ -2,6 +2,7 @@ import { mkdir, writeFile, readdir, copyFile, stat, readFile } from "fs/promises
 import { join, dirname } from "path";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
+import { homedir } from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -87,6 +88,98 @@ async function installCommands(targetDir: string): Promise<InstallResult> {
   return result;
 }
 
+interface ProtocolInstallResult {
+  projectPath: string;
+  userPath: string;
+  projectInstalled: boolean;
+  userInstalled: boolean;
+  userPreserved: boolean;
+}
+
+async function installProtocol(targetDir: string): Promise<ProtocolInstallResult> {
+  const templateRoot = join(__dirname, "..", "..", "templates");
+  const srcPath = join(templateRoot, "BRAIN_OS_PROTOCOL.md");
+
+  const projectDir = join(targetDir, ".claude", "brain-os");
+  const projectPath = join(projectDir, "PROTOCOL.md");
+  const userDir = join(homedir(), ".claude", "brain-os");
+  const userPath = join(userDir, "PROTOCOL.md");
+
+  const result: ProtocolInstallResult = {
+    projectPath,
+    userPath,
+    projectInstalled: false,
+    userInstalled: false,
+    userPreserved: false,
+  };
+
+  if (!existsSync(srcPath)) return result;
+
+  // Project install: always refresh (it's a read-only doc; new versions should land).
+  await mkdir(projectDir, { recursive: true });
+  await copyFile(srcPath, projectPath);
+  result.projectInstalled = true;
+
+  // User install: only if missing (don't clobber user customizations).
+  if (existsSync(userPath)) {
+    result.userPreserved = true;
+  } else {
+    await mkdir(userDir, { recursive: true });
+    await copyFile(srcPath, userPath);
+    result.userInstalled = true;
+  }
+
+  return result;
+}
+
+interface AgentInstallResult {
+  installed: string[];
+  preserved: string[];
+}
+
+async function installAgents(targetDir: string): Promise<AgentInstallResult> {
+  const agentsTemplateDir = join(__dirname, "..", "..", "templates", "agents");
+  const destDir = join(targetDir, ".claude", "agents");
+  const result: AgentInstallResult = { installed: [], preserved: [] };
+
+  if (!existsSync(agentsTemplateDir)) return result;
+
+  let entries: string[];
+  try {
+    entries = await readdir(agentsTemplateDir);
+  } catch {
+    return result;
+  }
+
+  await mkdir(destDir, { recursive: true });
+
+  for (const entry of entries) {
+    if (!entry.endsWith(".md")) continue;
+    const srcPath = join(agentsTemplateDir, entry);
+    const destPath = join(destDir, entry);
+
+    if (existsSync(destPath)) {
+      result.preserved.push(entry);
+      continue;
+    }
+
+    await copyFile(srcPath, destPath);
+    result.installed.push(entry);
+  }
+
+  return result;
+}
+
+interface HookInfo {
+  templatePath: string;
+  available: boolean;
+}
+
+function getHookInfo(): HookInfo {
+  const path = join(__dirname, "..", "..", "templates", "hooks", "brain-os-routing-guard.py");
+  return { templatePath: path, available: existsSync(path) };
+}
+
 export interface InitOptions {
   withCommands?: boolean;
 }
@@ -121,6 +214,10 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
   if (withCommands) {
     install = await installCommands(targetDir);
   }
+
+  const protocol = await installProtocol(targetDir);
+  const agents = await installAgents(targetDir);
+  const hook = getHookInfo();
 
   const mcpConfig = {
     mcpServers: {
@@ -179,6 +276,36 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
   } else if (!withCommands) {
     output.push("");
     output.push("Slash commands skipped (--no-commands).");
+  }
+
+  if (protocol.projectInstalled || protocol.userInstalled || protocol.userPreserved) {
+    output.push("");
+    output.push("Brain OS Protocol installed:");
+    if (protocol.projectInstalled) output.push(`    ${protocol.projectPath}  (project)`);
+    if (protocol.userInstalled) output.push(`    ${protocol.userPath}  (user, new)`);
+    if (protocol.userPreserved) output.push(`    ${protocol.userPath}  (user, preserved)`);
+    output.push("    Routing rules for every Brain OS slash command. Skills read this first.");
+  }
+
+  if (agents.installed.length > 0 || agents.preserved.length > 0) {
+    output.push("");
+    if (agents.installed.length > 0) {
+      output.push(`Subagent installed: ${agents.installed.join(", ")}`);
+      output.push("    Use when delegating Brain OS work to a subagent (Task tool with subagent_type=brain-os-mode).");
+    }
+    if (agents.preserved.length > 0) {
+      output.push(`Subagent already present (preserved): ${agents.preserved.join(", ")}`);
+    }
+  }
+
+  if (hook.available) {
+    output.push("");
+    output.push("Optional routing-guard hook available (opt-in):");
+    output.push(`    ${hook.templatePath}`);
+    output.push("    Warns when pulse files are read while a .brain/ workspace exists.");
+    output.push("    To enable, add to .claude/settings.local.json:");
+    output.push('      { "hooks": { "PreToolUse": [{ "matcher": "Read",');
+    output.push(`            "hooks": [{ "type": "command", "command": "python3 ${hook.templatePath}" }] }] } }`);
   }
 
   output.push("");

@@ -11,6 +11,7 @@ import { recallByMeaning } from "./tools/semantic-recall.js";
 import { readAuditLog } from "./tools/audit-read.js";
 import { setPlan, advancePlan, addPlanSteps, readPlan } from "./tools/plan-update.js";
 import { checkDecision } from "./tools/decision-check.js";
+import { refreshDecision } from "./tools/decision-refresh.js";
 import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 
@@ -104,6 +105,21 @@ export function registerTools(server: McpServer) {
     },
     async ({ proposed_action, entity_id }) => {
       const result = await checkDecision({ proposed_action, entity_id });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "decision_refresh",
+    "Refresh an existing decision's metadata: bump review_date forward, append evidence as the decision continues to hold, or change status (active/superseded/archived). Use INSTEAD of editing decisions.json directly. Does not mutate decision content — for content changes, log a new decision via decision_log.",
+    {
+      decision_id: z.string().describe("ID of the decision to refresh (e.g. 'dec-002')"),
+      review_date: z.string().optional().describe("New review date YYYY-MM-DD"),
+      add_evidence: z.string().optional().describe("Evidence note to append (e.g. 'YC submitted, launch landed'). Each call appends a dated entry, never overwrites."),
+      status: z.enum(["active", "superseded", "archived"]).optional().describe("New status. Use 'superseded' only when a replacement decision exists; use decision_log for the new decision and pass its supersede target via type matching."),
+    },
+    async ({ decision_id, review_date, add_evidence, status }) => {
+      const result = await refreshDecision({ decision_id, review_date, add_evidence, status });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );

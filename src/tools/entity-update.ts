@@ -3,6 +3,7 @@ import { readJsonFile, writeJsonFile, getEntitiesDir } from "../utils/file-store
 import { calculateStaleness, today } from "../utils/staleness.js";
 import { embedEntity } from "../utils/embeddings.js";
 import { audit } from "../utils/audit.js";
+import { syncPulseFile } from "../utils/pulse-sync.js";
 
 interface EntityUpdates {
   status?: string;
@@ -60,6 +61,8 @@ export async function updateEntity(
   });
 
   embedEntity(entityId, entity as unknown as Record<string, unknown>).catch(() => {});
+
+  await syncPulseFile(entity);
 
   return { entity, staleness, changes };
 }

@@ -4,40 +4,47 @@ Close the session cleanly. Update entity state. Capture decisions. Detect moment
 
 Not just "what changed" : "what does the system need to remember?"
 
+## REQUIRED FIRST READ
+
+Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. The wrap writes state back via MCP mutating tools; it must read current state via MCP tools first.
+
 ## Input
 
-Arguments: `$ARGUMENTS` (optional : entity name if wrapping a single entity)
+Arguments: `$ARGUMENTS` (optional : entity name if wrapping a single entity). If no argument, wrap all entities touched this session.
 
-If no argument → wrap all entities touched this session.
+## Primary tool sequence
 
-## How
-
-The Brain OS MCP tool `memory_commit` is designed for this flow. Call it to drive the wrap, or use `entity_update`, `decision_log`, and `pattern_detect` directly if you need finer control.
-
-Do not read code, repos, or `CLAUDE.md` files. Use conversation context plus MCP tools only.
+1. `mcp__brain-os__entity_read(entity_id)` : current state of the entity being wrapped
+2. `mcp__brain-os__plan_read(entity_id)` : current active step (so the wrap can advance it if relevant)
+3. Ask the user the questions in Step 2 (propose options for open-ended fields, per `feedback_wrap_question_options`)
+4. `mcp__brain-os__decision_check(...)` if a decision was made (conflict gate)
+5. `mcp__brain-os__entity_update(...)` : write the new state back
+6. `mcp__brain-os__plan_update(...)` : advance / complete plan steps if changed
+7. `mcp__brain-os__decision_log(...)` : if a strategic decision was made
+8. `mcp__brain-os__memory_commit(...)` : optional, writes a session-level audit entry
 
 ## Step 1: Identify what was worked on
 
 Look back at this conversation. Identify which entities were touched : anywhere a decision was made, code was written, or direction changed.
 
-If an entity name was given as argument → wrap that one only.
+If an entity name was given as argument, wrap that one only.
 
 ## Step 2: For each touched entity, ask
 
-One message per entity. Keep it fast:
+One message per entity. Propose 2 to 3 candidate answers drawn from the conversation for open-ended fields (decision, next move, pattern). Structured fields with enums (status y/n, momentum up/same/down/stalled, mode active/parked/incubating/archived) stay direct.
 
 ```
 Wrapping [ENTITY NAME]:
 
-1. Status changed? (y/n, if yes, what's the new status?)
-2. Decision made? (what was decided? should it go in the decision log?)
-3. Next move changed? (what's the actual next thing?)
+1. Status changed? (y/n, if yes: a / b / c / other)
+2. Decision made? (a / b / c / none)
+3. Next move changed? (a / b / c / other)
 4. Momentum: up / same / down / stalled?
-5. Should this entity stay active, or be parked/archived?
-6. Any pattern noticed? (recurring theme, blocker, or behavior?)
+5. Mode: stay active / park / incubate / archive?
+6. Pattern noticed? (a / b / none)
 ```
 
-Yes/no where possible. One message per entity, max.
+Yes/no or pick-one where possible. One message per entity, max.
 
 ## Step 3: Update the entity
 
@@ -57,19 +64,24 @@ For each entity with changes, call `entity_update` with the relevant fields:
 
 ## Step 4: Capture decisions
 
-If a strategic decision was made during the session, ask: "Should this go in the decision log?"
+If a strategic decision was made, ask: "Should this go in the decision log?"
 
-If yes, call `decision_log`. Before writing, call `decision_check` to surface any conflicts with existing active decisions.
+If yes:
+- Call `decision_check` to surface any conflicts with existing active decisions
+- Call `decision_log` to persist
+- If the new decision supersedes an existing one, the tool will mark the old one `superseded`
 
-If a new decision supersedes an existing one, the tool will mark the old one `superseded`.
+## Step 5: Advance the plan if needed
 
-## Step 5: Log patterns
+If a plan step shipped this session, call `plan_update` to mark it complete and surface the next active step.
+
+## Step 6: Log patterns
 
 If a recurring theme, blocker, or avoidance behavior was noticed, ask: "Should this go in the pattern log?"
 
-If yes, call `pattern_detect` to confirm it as a pattern (or add a new one). If it matches an existing pattern, update that entry instead of creating a duplicate.
+If yes, call `pattern_detect` to confirm it (or update existing).
 
-## Step 6: Summary
+## Step 7: Summary
 
 ```
 ==============================
@@ -82,15 +94,17 @@ If yes, call `pattern_detect` to confirm it as a pattern (or add a new one). If 
   ----------------------------
   Decisions logged: [count, or none]
   Patterns logged:  [count, or none]
+  Plan steps advanced: [count, or none]
 ==============================
 ```
 
 ## Rules
 
 - Never guess what changed. Always ask.
+- For open-ended fields, propose 2 to 3 candidate answers. Picking is the reflection.
 - If the user says "nothing changed" for an entity, do not update. Just confirm.
 - If a blocker was resolved, clear it.
 - Keep questions short. This is a close, not a review.
 - If this session touched the user's Brain OS entity itself, update it too.
-- Every wrap should take under 2 minutes. Fast close, clean state.
-- Do not read code. MCP tools only.
+- Every wrap should take under 2 minutes.
+- MCP tools only.

@@ -1,27 +1,29 @@
 # Brain OS : Strategy
 
-For product decisions, concept rethinking, and direction. Not a builder. Not a designer. A thinking partner that helps you decide before you build.
+For product decisions, concept rethinking, and direction. A thinking partner that helps you decide before you build.
+
+## REQUIRED FIRST READ
+
+Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. Tool routing matters here: `decision_check` runs early so you don't propose work that contradicts a settled decision.
 
 ## Input
 
-Arguments: `$ARGUMENTS` (format: `<entity-name> "<question or problem>"`)
+Arguments: `$ARGUMENTS` (format: `<entity-name> "<question or problem>"`). If no question is given, read the entity and surface the open strategic question from its `open_questions` field.
 
-If no question is given, read the entity and surface the open strategic question from its `open_questions` field.
+## Primary tool sequence
 
-## How
-
-Call `entity_read` for the named entity. Optionally call `decision_check` to see if the question conflicts with an existing decision, and `semantic_recall` to surface related prior thinking.
-
-Do not read code, repos, or `CLAUDE.md` files.
+1. `mcp__brain-os__entity_read(entity_id)` : load context, recent decisions, open questions
+2. `mcp__brain-os__semantic_recall(question)` : surface related prior thinking across decisions, patterns, sessions
+3. `mcp__brain-os__decision_check(question, entity_id)` : detect if this re-opens a settled decision
 
 ## Step 1: Load context
 
-Read the entity. Identify the core strategic tension:
+Identify the core strategic tension:
 
-- Is it a concept problem? (does the idea actually work?)
-- Is it a product decision? (what to build, what to cut, what to gate)
-- Is it a direction question? (how to sell, who to sell to, what comes first)
-- Is it a priority conflict? (two valid paths, need to pick one)
+- Concept problem : does the idea actually work?
+- Product decision : what to build, what to cut, what to gate
+- Direction question : how to sell, who to sell to, what comes first
+- Priority conflict : two valid paths, need to pick one
 
 ## Step 2: Name the real question
 
@@ -36,7 +38,7 @@ Example:
 Use this structure. Keep each section short and direct.
 
 ### What we know
-Facts from the entity and decisions. No speculation.
+Facts from the entity and recent decisions. No speculation.
 
 ### The real question
 The one decision that unlocks everything else.
@@ -52,13 +54,14 @@ One concrete action that proves or disproves the recommendation within a week.
 
 ## Step 4: Capture the outcome
 
-Ask the user: "Is this the direction?"
+Ask: "Is this the direction?"
 
 If yes:
-- Call `decision_log` (this is a strategic decision worth capturing)
-- Call `entity_update` to set the new `next_move` and clear the `blocked` field if the strategic question was the blocker
+- `mcp__brain-os__decision_check` again with the chosen direction (final conflict gate)
+- `mcp__brain-os__decision_log` (capture the decision)
+- `mcp__brain-os__entity_update` (set the new `next_move`, clear `blocked` if resolved)
 
-If no, do not log. Note the open question on the entity for next time.
+If no, do not log. Note the open question on the entity for next time via `entity_update`.
 
 ## Rules
 
@@ -67,4 +70,4 @@ If no, do not log. Note the open question on the entity for next time.
 - Always end with one concrete next move, not a list.
 - If the user is stuck on "I don't know what I want", say that directly and ask the right question.
 - Strategy before code, always.
-- Do not read code. MCP tools only.
+- MCP tools only. Name them in user-facing text.

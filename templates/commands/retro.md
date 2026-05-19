@@ -1,36 +1,41 @@
 # Brain OS : Retrospective Engine
 
-Answer: "What actually happened? What moved, what stuck, what am I avoiding?"
+"What actually happened? What moved, what stuck, what am I avoiding?"
 
 Not a status report. A mirror.
+
+## REQUIRED FIRST READ
+
+Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`.
 
 ## Input
 
 Arguments: `$ARGUMENTS` (optional : "weekly" or "monthly", defaults to weekly)
 
-## How
+## Primary tool sequence
 
-Call `audit_log` for the relevant time window (last 7 or 30 days) to see what was actually written, decided, and updated. Cross-reference with `entity_read` for current state and `pattern_detect` for active patterns.
-
-Do not read code, repos, or `CLAUDE.md` files.
+1. `mcp__brain-os__audit_log({days: 7})` (or 30) : what was actually written, decided, updated
+2. `mcp__brain-os__entity_read()` : current state of all entities
+3. `mcp__brain-os__pattern_detect()` : active patterns
+4. `mcp__brain-os__semantic_recall("this week", source_kind="session")` : cross-reference session context
 
 ## Analysis
 
 ### Weekly retro
 
-Look at what changed in the last 7 days. For each entity touched, compare current state to the `next_move` at the start of the week (use audit log + decisions).
+Look at what changed in the last 7 days. For each touched entity, compare current state to the `next_move` at the start of the week.
 
 Determine:
 
 - **Shipped**: things that actually moved from plan to done
-- **Decided**: strategic decisions made (last 7 days)
-- **Repeated but not shipped**: things mentioned in `next_move` or `open_questions` that haven't moved
+- **Decided**: strategic decisions made
+- **Repeated but not shipped**: things mentioned in `next_move` / `open_questions` that haven't moved
 - **Avoided**: active entities not touched at all this week
-- **Surprise**: anything unexpected : unplanned work that took priority, or an entity that moved when it wasn't supposed to
+- **Surprise**: unplanned work that took priority, or an entity that moved when it wasn't supposed to
 
 ### Monthly retro
 
-Same analysis but over 30 days. Plus:
+Same analysis over 30 days. Plus:
 
 - **Mode changes**: entities that moved between active/parked/incubating/archived
 - **Decisions that held**: 30+ day old decisions still guiding work
@@ -78,7 +83,7 @@ Ask:
 
 1. Does this feel accurate?
 2. Any patterns to log?
-3. Any entity mode changes? (active : parked, etc.)
+3. Any entity mode changes? (active to parked, etc.)
 4. Should any `next_move` fields be rewritten based on this?
 
 For each yes, call the appropriate MCP tool (`entity_update`, `pattern_detect` to confirm a new pattern, etc.).
@@ -87,7 +92,7 @@ For each yes, call the appropriate MCP tool (`entity_update`, `pattern_detect` t
 
 - Be honest. If nothing shipped, say nothing shipped. Don't soften it.
 - "Repeated but not shipped" is the most important section. It reveals where energy leaks.
-- Never frame parked entities as failures. Parking is a decision, not a defeat.
+- Never frame parked entities as failures. Parking is a decision.
 - Keep "Hidden pattern" to ONE observation. The most important one.
 - If this is the first retro, say so: "First retro. No comparison data yet. Establishing baseline."
-- Do not read code. MCP tools only.
+- MCP tools only.
