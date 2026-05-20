@@ -37,10 +37,9 @@ async function isBrainOsCommand(filePath: string): Promise<boolean> {
 }
 
 interface InstallResult {
-  mode: "flat" | "namespaced";
   installed: string[];     // command display names installed this run
   preserved: string[];     // command display names already there (from prior brain-os init)
-  blocked: string[];       // command display names that couldn't install (top-level name taken by other tool)
+  blocked: string[];       // command display names that couldn't install (path taken by other tool)
 }
 
 async function installCommands(targetDir: string): Promise<InstallResult> {
@@ -49,40 +48,37 @@ async function installCommands(targetDir: string): Promise<InstallResult> {
 
   await mkdir(destRoot, { recursive: true });
 
-  // Decide mode: any FLAT-able command's primary path occupied by a non-brain-os file => namespaced mode.
-  let mode: "flat" | "namespaced" = "flat";
-  for (const cmd of COMMANDS) {
-    if (!cmd.nsRel) continue;
-    const primaryPath = join(destRoot, cmd.flatRel);
-    if (existsSync(primaryPath) && !(await isBrainOsCommand(primaryPath))) {
-      mode = "namespaced";
-      break;
-    }
-  }
+  const result: InstallResult = { installed: [], preserved: [], blocked: [] };
 
-  const result: InstallResult = { mode, installed: [], preserved: [], blocked: [] };
-
-  for (const cmd of COMMANDS) {
-    const srcPath = join(templatesRoot, cmd.template);
-    if (!existsSync(srcPath)) continue;
-
-    const useNs = mode === "namespaced" && cmd.nsRel && cmd.nsName;
-    const destRel = useNs ? cmd.nsRel! : cmd.flatRel;
-    const displayName = useNs ? cmd.nsName! : cmd.flatName;
+  const tryInstall = async (
+    srcPath: string,
+    destRel: string,
+    displayName: string,
+  ): Promise<void> => {
     const destPath = join(destRoot, destRel);
-
     if (existsSync(destPath)) {
       if (await isBrainOsCommand(destPath)) {
         result.preserved.push(displayName);
       } else {
         result.blocked.push(displayName);
       }
-      continue;
+      return;
     }
-
     await mkdir(dirname(destPath), { recursive: true });
     await copyFile(srcPath, destPath);
     result.installed.push(displayName);
+  };
+
+  // Install both canonical (brain:*) and bare alias forms for every command.
+  // Re-running init repairs any missing form without disturbing the existing one.
+  for (const cmd of COMMANDS) {
+    const srcPath = join(templatesRoot, cmd.template);
+    if (!existsSync(srcPath)) continue;
+
+    if (cmd.nsRel && cmd.nsName) {
+      await tryInstall(srcPath, cmd.nsRel, cmd.nsName);
+    }
+    await tryInstall(srcPath, cmd.flatRel, cmd.flatName);
   }
 
   return result;
@@ -248,14 +244,11 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
 
   if (withCommands && install) {
     output.push("");
-    if (install.mode === "namespaced") {
-      output.push("Detected existing commands with the same names in your project.");
-      output.push("Installing Brain OS commands under the /brain: namespace for safety.");
-      output.push("");
-    }
     if (install.installed.length > 0) {
       output.push(`Slash commands installed (${install.installed.length}):`);
       for (const name of install.installed) output.push(`    ${name}`);
+      output.push("");
+      output.push("  /brain:* are canonical. Bare /forms are aliases for power users.");
     }
     if (install.preserved.length > 0) {
       output.push("");
@@ -263,8 +256,8 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     }
     if (install.blocked.length > 0) {
       output.push("");
-      output.push(`Could not install (name taken by another tool): ${install.blocked.join(", ")}`);
-      output.push("  Rename the conflicting file or remove it, then re-run init.");
+      output.push(`Could not install (path taken by another tool): ${install.blocked.join(", ")}`);
+      output.push("  Rename or remove the conflicting file, then re-run init.");
     }
     if (
       install.installed.length === 0 &&

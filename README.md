@@ -59,7 +59,7 @@ npx brain-os init
 This does two things:
 
 1. **Creates a `.brain/` directory** with your entity, decision, and pattern stores.
-2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/focus`, `/decide`, etc. directly in Claude Code.
+2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/brain:focus`, `/brain:decide`, etc. directly in Claude Code. Bare aliases (`/focus`, `/decide`, etc.) install alongside for brevity.
 
 Skip the slash commands with `npx brain-os init --no-commands` if you only want the MCP server.
 
@@ -129,7 +129,7 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 
 ## Slash commands
 
-`brain-os init` installs 8 slash commands into `.claude/commands/` so the agent has a clear vocabulary for working with operational state. Each command instructs the agent to call the right MCP tools and present results consistently.
+`brain-os init` installs slash commands into `.claude/commands/` so the agent has a clear vocabulary for working with operational state. Each command installs in two forms: `/brain:*` (canonical, documented form) and a bare alias (`/decide`, `/focus`, etc.) for power-user brevity. `/brain` is the namespace root and installs once.
 
 It also installs:
 
@@ -137,22 +137,20 @@ It also installs:
 - **`brain-os-mode` subagent** at `.claude/agents/brain-os-mode.md`. When the main agent delegates Brain OS work to a subagent (e.g. Claude Code's Task tool), it picks up under the same protocol — no risk of subagents falling back to generic file search.
 - **Optional routing-guard hook** at `templates/hooks/brain-os-routing-guard.py`. Opt-in PreToolUse hook that warns if pulse files are read while a `.brain/` workspace exists. Install instructions are printed by `brain-os init`.
 
-| Command | What it does |
-|---------|-------------|
-| `/brain` | Project scanner: overview of all entities, freshness, decisions, alerts |
-| `/focus` | "What should I work on today, and why?" with evidence |
-| `/decide` | Capture a strategic decision (with conflict check before logging) |
-| `/strategy` | Strategic thinking partner: think a decision through before building |
-| `/wrap` | Session wrap: update entity state, capture decisions, detect momentum shifts |
-| `/patterns` | Detect patterns across entities: recurring blockers, avoidance, themes |
-| `/retro` | Weekly or monthly retrospective: what shipped, what stalled, what's hidden |
-| `/graph` | Show how entities connect, leverage opportunities, shared decisions |
+| Command | Alias | What it does |
+|---------|-------|-------------|
+| `/brain` | — | Project scanner: overview of all entities, freshness, decisions, alerts |
+| `/brain:focus` | `/focus` | "What should I work on today, and why?" with evidence |
+| `/brain:decide` | `/decide` | Capture a strategic decision (with conflict check before logging) |
+| `/brain:strategy` | `/strategy` | Strategic thinking partner: think a decision through before building |
+| `/brain:wrap` | `/wrap` | Session wrap: update entity state, capture decisions, detect momentum shifts |
+| `/brain:patterns` | `/patterns` | Detect patterns across entities: recurring blockers, avoidance, themes |
+| `/brain:retro` | `/retro` | Weekly or monthly retrospective: what shipped, what stalled, what's hidden |
+| `/brain:graph` | `/graph` | Show how entities connect, leverage opportunities, shared decisions |
 
-### Automatic namespace fallback
+### Idempotent install
 
-If a command with the same name already exists in `.claude/commands/` (from another tool), Brain OS detects the collision and installs **all** its commands under the `/brain:` namespace instead — uniformly. So you'd get `/brain:focus`, `/brain:wrap`, etc. Your existing files are never overwritten.
-
-Re-running `init` is safe: existing Brain OS commands are preserved.
+Re-running `init` is safe and repair-aware: existing Brain OS commands are preserved, and any missing form is installed. If a command path is taken by another tool, that path is skipped and reported — your file is never overwritten. You can install Brain OS into a project with existing `/decide` or `/focus` commands and the namespaced `/brain:*` forms will still land.
 
 ## How it works
 
