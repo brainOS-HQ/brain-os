@@ -51,6 +51,10 @@ export async function refreshDecision(input: RefreshInput): Promise<RefreshResul
   if (input.status !== undefined && input.status !== decision.status) {
     changes.push(`status: ${decision.status} → ${input.status}`);
     decision.status = input.status;
+    if (input.status !== "superseded" && decision.superseded_by) {
+      changes.push(`superseded_by: ${decision.superseded_by} → null`);
+      decision.superseded_by = null;
+    }
   }
 
   let reEmbedded = false;
