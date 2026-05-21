@@ -166,6 +166,14 @@ Brain OS stores everything as local JSON files in a `.brain/` directory:
 
 No cloud. No database. No account. Your data stays on your machine.
 
+## Why no UI?
+
+The interface is the agent. Brain OS is read and written through MCP tool calls — `/brain`, `/focus`, `/decide`, `decision_check`, etc. — surfaced inline by whichever client you use (Claude Code, Cursor, etc.). There's no separate dashboard to keep open, no second tab to context-switch into, no UI state that can drift from the underlying files.
+
+This is a design choice, not a missing feature. Brain OS state lives at the same level as your code; the agent is already there, already in the conversation, already the right surface to ask "what's the priority right now?" Adding a human dashboard would split attention between two interfaces for the same data.
+
+If you want a visual at-a-glance view, `.brain/` is plain JSON — render it however you want. The public MCP server stays agent-native by design.
+
 ## Teams & sync
 
 Brain OS is single-user by design today. But because `.brain/` is just local JSON files, teams can share a brain through any synced filesystem — no product changes needed:
