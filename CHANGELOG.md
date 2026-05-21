@@ -2,6 +2,36 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.4.1] — 2026-05-21
+
+### Fixed — `decision_log` over-supersession on type collision
+
+- `decision_log` no longer auto-supersedes prior decisions just because they share `(entity_id, type)`. Two unrelated `architecture` (or any-type) decisions on the same entity now coexist.
+- New optional parameter `supersedes: string[]` — pass the explicit IDs you intend to supersede. Each target must belong to the same `entity_id` or the call throws.
+- Behavior change: callers that relied on auto-supersession lose it silently. The auto behavior was buggy (it would cascade through sequential same-type logs, falsely marking each previous decision as superseded by the next).
+
+### Fixed — `decision_check` keyword false-positives
+
+- Keyword heuristics (rejected-alternative word overlap, hardcoded negation pairs like `simple`/`complex`, `monolith`/`microservice`, `start`/`stop`) no longer force a hard `conflict` status on substring coincidence alone. They now demote to `caution` unless the directional semantic layer also confirms.
+- `embedDecision` now stores chosen direction and rejected alternatives as **two separate facets** (`chosen` and `rejected`). `decision_check` queries both with different thresholds, then:
+  - keyword flag + semantic match against rejected → promote to `conflict` (STOP)
+  - keyword flag + semantic match against chosen (alignment) → drop the false-positive caution
+  - keyword flag with no semantic confirmation → stay `caution`
+  - Without `BRAIN_EMBEDDINGS` configured: keyword flags stay as cautions, never returns `conflict`. Softer default, no false STOPs.
+- Existing single-embedding entries are treated as `chosen` for back-compat; new entries gain the facet field. Old decisions re-embed organically on next `decision_log` or `decision_refresh`.
+
+### Fixed — `plan_advance` over-promotion
+
+- `plan_advance` no longer promotes the next pending step to `active` when an active step already exists. Completing a non-active step out of order (e.g. finishing step-003 while step-002 is still active) used to leave two steps in `active` state simultaneously.
+
+### Fixed — `decision_refresh` dangling `superseded_by`
+
+- Transitioning a decision's status away from `superseded` (e.g. back to `active`) now clears the `superseded_by` pointer. Prior behavior left a dangling reference to the now-irrelevant successor.
+
+### Added — smoke test suite
+
+- `tests/smoke.mjs` covers the four fixes above as regression tests, plus cross-entity supersession rejection. Runs against an isolated `BRAIN_DIR` via `node --test`. New `npm test` script.
+
 ## [0.4.0] — 2026-05-19
 
 ### Added — `decision_refresh` MCP tool (closes #3)

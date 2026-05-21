@@ -89,6 +89,7 @@ export function registerTools(server: McpServer) {
       chosen_direction: z.string().optional(),
       proof_action: z.string().describe("One action that validates this decision"),
       review_date: z.string().describe("YYYY-MM-DD — when to revisit"),
+      supersedes: z.array(z.string()).optional().describe("Decision IDs this new decision replaces (e.g. ['dec-007']). Only the IDs you explicitly pass will be marked superseded — there is no auto-deduction from type. Each target must belong to the same entity_id."),
     },
     async (args) => {
       const result = await logDecision(args);
@@ -116,7 +117,7 @@ export function registerTools(server: McpServer) {
       decision_id: z.string().describe("ID of the decision to refresh (e.g. 'dec-002')"),
       review_date: z.string().optional().describe("New review date YYYY-MM-DD"),
       add_evidence: z.string().optional().describe("Evidence note to append (e.g. 'YC submitted, launch landed'). Each call appends a dated entry, never overwrites."),
-      status: z.enum(["active", "superseded", "archived"]).optional().describe("New status. Use 'superseded' only when a replacement decision exists; use decision_log for the new decision and pass its supersede target via type matching."),
+      status: z.enum(["active", "superseded", "archived"]).optional().describe("New status. Use 'superseded' only when a replacement decision exists — prefer logging the replacement via decision_log with its `supersedes` parameter instead. Transitioning away from 'superseded' automatically clears the dangling superseded_by pointer."),
     },
     async ({ decision_id, review_date, add_evidence, status }) => {
       const result = await refreshDecision({ decision_id, review_date, add_evidence, status });

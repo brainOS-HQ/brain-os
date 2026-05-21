@@ -15,6 +15,7 @@ interface DecisionInput {
   chosen_direction?: string;
   proof_action: string;
   review_date: string;
+  supersedes?: string[];
 }
 
 export async function logDecision(input: DecisionInput): Promise<{
@@ -43,13 +44,20 @@ export async function logDecision(input: DecisionInput): Promise<{
   };
 
   const superseded: string[] = [];
-  if (input.type) {
-    for (const d of existing) {
-      if (d.entity_id === input.entity_id && d.type === input.type && d.status === "active") {
-        d.status = "superseded";
-        d.superseded_by = id;
-        superseded.push(d.id);
+  if (input.supersedes && input.supersedes.length > 0) {
+    for (const targetId of input.supersedes) {
+      const target = existing.find((d) => d.id === targetId);
+      if (!target) {
+        throw new Error(`Cannot supersede ${targetId}: decision not found.`);
       }
+      if (target.entity_id !== input.entity_id) {
+        throw new Error(
+          `Cannot supersede ${targetId}: belongs to entity "${target.entity_id}", not "${input.entity_id}". A decision can only supersede decisions of the same entity.`
+        );
+      }
+      target.status = "superseded";
+      target.superseded_by = id;
+      superseded.push(target.id);
     }
   }
 

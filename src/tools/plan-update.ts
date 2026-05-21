@@ -33,6 +33,12 @@ function nextStepId(plan: PlanStep[]): string {
 function promoteNextStep(entity: Entity): string | null {
   if (!entity.plan || entity.plan.length === 0) return null;
 
+  const existingActive = entity.plan.find((s) => s.status === "active");
+  if (existingActive) {
+    entity.next_move = existingActive.description;
+    return null;
+  }
+
   const nextPending = entity.plan.find((s) => s.status === "pending");
   if (nextPending) {
     nextPending.status = "active";

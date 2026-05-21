@@ -7,6 +7,7 @@ interface StoredEmbedding {
   id: string;
   source_kind: "entity" | "decision" | "pattern" | "session";
   source_id: string;
+  facet?: "chosen" | "rejected";
   content: string;
   vector: number[];
   provider: "local" | "openai";
@@ -170,7 +171,8 @@ function cosine(a: number[], b: number[]): number {
 export async function embedAndStore(
   sourceKind: StoredEmbedding["source_kind"],
   sourceId: string,
-  content: string
+  content: string,
+  facet?: StoredEmbedding["facet"]
 ): Promise<void> {
   const provider = await getProvider();
   if (!provider) return;
@@ -180,15 +182,15 @@ export async function embedAndStore(
 
   const all = await loadEmbeddings();
 
-  // If provider changed, re-embed everything (vectors are incompatible across providers)
   const existing = all.findIndex(
-    (e) => e.source_kind === sourceKind && e.source_id === sourceId
+    (e) => e.source_kind === sourceKind && e.source_id === sourceId && e.facet === facet
   );
 
   const entry: StoredEmbedding = {
-    id: `${sourceKind}-${sourceId}`,
+    id: facet ? `${sourceKind}-${sourceId}-${facet}` : `${sourceKind}-${sourceId}`,
     source_kind: sourceKind,
     source_id: sourceId,
+    facet,
     content: content.slice(0, 2000),
     vector,
     provider: provider.name,
@@ -210,6 +212,7 @@ export async function semanticRecall(
     k?: number;
     threshold?: number;
     sourceKind?: string;
+    facet?: StoredEmbedding["facet"];
   }
 ): Promise<RecallResult[]> {
   const k = options?.k ?? 5;
@@ -226,11 +229,16 @@ export async function semanticRecall(
   const all = await loadEmbeddings();
   if (all.length === 0) return [];
 
-  // Only compare against embeddings from the same provider
   const compatible = all.filter((e) => e.provider === provider.name);
 
   const scored = compatible
     .filter((e) => !options?.sourceKind || e.source_kind === options.sourceKind)
+    .filter((e) => {
+      if (options?.facet === undefined) return true;
+      // Unfaceted legacy entries treated as "chosen" for back-compat
+      const entryFacet = e.facet ?? "chosen";
+      return entryFacet === options.facet;
+    })
     .map((e) => ({
       source_kind: e.source_kind,
       source_id: e.source_id,
@@ -282,17 +290,19 @@ export async function embedEntity(entityId: string, entity: Record<string, unkno
 }
 
 export async function embedDecision(decisionId: string, decision: Record<string, unknown>): Promise<void> {
-  const parts = [
+  const chosenParts = [
     decision.decision,
     decision.why,
     decision.chosen_direction,
     decision.proof_action,
   ].filter(Boolean);
+  await embedAndStore("decision", decisionId, chosenParts.join(" | "), "chosen");
+
   const alternatives = decision.alternatives as Array<{option: string; rejected_because: string}> | undefined;
   if (alternatives?.length) {
-    parts.push(...alternatives.map((a) => `rejected: ${a.option}`));
+    const rejectedText = alternatives.map((a) => `${a.option}: ${a.rejected_because}`).join(" | ");
+    await embedAndStore("decision", decisionId, rejectedText, "rejected");
   }
-  await embedAndStore("decision", decisionId, parts.join(" | "));
 }
 
 export async function embedSession(sessionId: string, summary: string): Promise<void> {
