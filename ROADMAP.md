@@ -30,9 +30,12 @@ These define the lane. Any one gap alone is copyable, but each is a natural exte
 
 ## Priority 2 — Decision Continuity (the killer feature)
 
-- [x] **`decision_check` tool** — agent calls before acting, returns "clear" / "caution" / "conflict"
+- [x] **`decision_check` tool** — agent calls before acting, returns "clear" / "caution" / "conflict". v0.4.1: directional embeddings (chosen vs rejected facets) — keyword heuristics demote to caution unless semantic confirms against the rejected facet; never returns `conflict` without `BRAIN_EMBEDDINGS`. Eliminates false STOPs from coincidental word overlap.
 - [x] **Decision Lock enforcement** — conflicts block agent from proceeding without user confirmation
-- [x] **`decision_refresh` tool** — bump `review_date`, append evidence, change status. Metadata-only mutation; preserves audit-log fidelity (no more direct JSON edits)
+- [x] **`decision_log` supersession hygiene** — v0.4.1: removed type-collision auto-deduction; requires explicit `supersedes: string[]` parameter. Each target must belong to the same `entity_id`. Fixes the cascade-supersession bug seen on parallel batches.
+- [x] **`decision_refresh` tool** — bump `review_date`, append evidence, change status. Metadata-only mutation; preserves audit-log fidelity (no more direct JSON edits). v0.4.1: clears dangling `superseded_by` when status transitions away from `superseded`.
+- [x] **`plan_advance` ordering integrity** — v0.4.1: skips promotion when an active step already exists, so completing steps out of order can no longer leave two `active` steps simultaneously.
+- [x] **Smoke test suite** — v0.4.1: `tests/smoke.mjs` covers 6 core tools via `node --test`. New `npm test` script. Regression coverage for all v0.4.1 fixes.
 - [ ] **Revisit triggers** — auto-flag decisions when their review_date passes or new evidence appears
 
 ## Priority 3 — Schema Expansion
