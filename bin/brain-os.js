@@ -10,7 +10,9 @@ if (command === "init") {
   const flags = args.slice(1).filter((a) => a.startsWith("--"));
   const targetDir = positional[0] || process.cwd();
   const withCommands = !flags.includes("--no-commands");
-  const result = await initBrain(targetDir, { withCommands });
+  const withAgentInstructions = !flags.includes("--no-agent-instructions");
+  const minimal = flags.includes("--minimal");
+  const result = await initBrain(targetDir, { withCommands, withAgentInstructions, minimal });
   console.log(result);
 } else if (command === "serve") {
   await import("../dist/index.js");
@@ -19,11 +21,13 @@ if (command === "init") {
 Brain OS : Operational memory for AI agents
 
 Usage:
-  brain-os init [path] [--no-commands]   Initialize .brain/ and install slash commands
-  brain-os serve                         Start MCP server (stdio)
+  brain-os init [path] [flags]   Initialize .brain/ and install agent instructions + slash commands
+  brain-os serve                 Start MCP server (stdio)
 
 Options:
-  --no-commands    Skip installing slash commands into .claude/commands/
+  --no-commands              Skip installing slash commands into .claude/commands/
+  --no-agent-instructions    Skip installing AGENTS.md and per-client pointer files
+  --minimal                  Install only AGENTS.md + CLAUDE.md (skip Copilot, Cursor, Zed, Windsurf pointers)
 
 Learn more: https://brainos-hq.com
 `);

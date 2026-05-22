@@ -176,12 +176,67 @@ function getHookInfo(): HookInfo {
   return { templatePath: path, available: existsSync(path) };
 }
 
+interface AgentInstructionSpec {
+  template: string;
+  destRel: string;
+  displayName: string;
+  minimal: boolean;
+}
+
+const AGENT_INSTRUCTIONS: AgentInstructionSpec[] = [
+  { template: "AGENTS.md",                destRel: "AGENTS.md",                          displayName: "AGENTS.md",                          minimal: true },
+  { template: "CLAUDE.md",                destRel: "CLAUDE.md",                          displayName: "CLAUDE.md",                          minimal: true },
+  { template: "copilot-instructions.md",  destRel: ".github/copilot-instructions.md",    displayName: ".github/copilot-instructions.md",    minimal: false },
+  { template: "cursor-brain-os.mdc",      destRel: ".cursor/rules/brain-os.mdc",         displayName: ".cursor/rules/brain-os.mdc",         minimal: false },
+  { template: "zed-rules.md",             destRel: ".zed/rules.md",                      displayName: ".zed/rules.md",                      minimal: false },
+  { template: "windsurfrules",            destRel: ".windsurfrules",                     displayName: ".windsurfrules",                     minimal: false },
+];
+
+interface AgentInstructionsResult {
+  installed: string[];
+  preserved: string[];
+  skipped_minimal: string[];
+}
+
+async function installAgentInstructions(
+  targetDir: string,
+  minimal: boolean,
+): Promise<AgentInstructionsResult> {
+  const templatesRoot = join(__dirname, "..", "..", "templates", "agent-instructions");
+  const result: AgentInstructionsResult = { installed: [], preserved: [], skipped_minimal: [] };
+
+  if (!existsSync(templatesRoot)) return result;
+
+  for (const spec of AGENT_INSTRUCTIONS) {
+    if (minimal && !spec.minimal) {
+      result.skipped_minimal.push(spec.displayName);
+      continue;
+    }
+    const srcPath = join(templatesRoot, spec.template);
+    if (!existsSync(srcPath)) continue;
+    const destPath = join(targetDir, spec.destRel);
+    if (existsSync(destPath)) {
+      result.preserved.push(spec.displayName);
+      continue;
+    }
+    await mkdir(dirname(destPath), { recursive: true });
+    await copyFile(srcPath, destPath);
+    result.installed.push(spec.displayName);
+  }
+
+  return result;
+}
+
 export interface InitOptions {
   withCommands?: boolean;
+  withAgentInstructions?: boolean;
+  minimal?: boolean;
 }
 
 export async function initBrain(targetDir: string, options: InitOptions = {}): Promise<string> {
   const withCommands = options.withCommands !== false;
+  const withAgentInstructions = options.withAgentInstructions !== false;
+  const minimal = options.minimal === true;
   const brainDir = join(targetDir, ".brain");
 
   const alreadyInitialized = existsSync(brainDir);
@@ -213,6 +268,9 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
 
   const protocol = await installProtocol(targetDir);
   const agents = await installAgents(targetDir);
+  const agentInstructions: AgentInstructionsResult | null = withAgentInstructions
+    ? await installAgentInstructions(targetDir, minimal)
+    : null;
   const hook = getHookInfo();
 
   const mcpConfig = {
@@ -289,6 +347,27 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     if (agents.preserved.length > 0) {
       output.push(`Subagent already present (preserved): ${agents.preserved.join(", ")}`);
     }
+  }
+
+  if (agentInstructions) {
+    output.push("");
+    if (agentInstructions.installed.length > 0) {
+      output.push(`Agent instructions installed (${agentInstructions.installed.length}):`);
+      for (const name of agentInstructions.installed) output.push(`    ${name}`);
+      output.push("    AGENTS.md is canonical. Per-client files are thin pointers.");
+    }
+    if (agentInstructions.preserved.length > 0) {
+      output.push("");
+      output.push(`Agent instructions preserved (already present): ${agentInstructions.preserved.join(", ")}`);
+    }
+    if (agentInstructions.skipped_minimal.length > 0) {
+      output.push("");
+      output.push(`Skipped (--minimal): ${agentInstructions.skipped_minimal.join(", ")}`);
+      output.push("    Re-run without --minimal to install pointer files for Copilot / Cursor / Zed / Windsurf.");
+    }
+  } else {
+    output.push("");
+    output.push("Agent instructions skipped (--no-agent-instructions).");
   }
 
   if (hook.available) {
