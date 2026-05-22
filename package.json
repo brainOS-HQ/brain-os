@@ -19,7 +19,8 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "serve": "node dist/index.js",
-    "test": "npm run build && node --test tests/smoke.mjs"
+    "test": "npm run build && node --test tests/smoke.mjs",
+    "metrics": "node scripts/fetch-metrics.mjs"
   },
   "keywords": [
     "mcp",
