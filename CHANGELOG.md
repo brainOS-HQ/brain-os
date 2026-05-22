@@ -2,6 +2,21 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.4.2] — 2026-05-22
+
+### Security — transitive vulns in MCP SDK HTTP layer resolved
+
+First `npm audit` run on brain-os surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack (`hono`, `fast-uri`, `express-rate-limit`, `protobufjs`). Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK and still show in `npm audit` output to every user.
+
+Fixed in this release:
+
+- **HIGH** — `fast-uri` path traversal via percent-encoded dot segments (GHSA-q3j6-qgpj-74h6) + host confusion via percent-encoded authority delimiters (GHSA-v39h-62p7-jpjc)
+- **MODERATE** — `hono` 5 CVEs (CSS injection in JSX SSR, JWT NumericDate validation, cache leakage via missing Vary header, body limit bypass on chunked requests, unvalidated JSX tag names)
+- **MODERATE** — `ip-address` XSS via `Address6` HTML-emitting methods (GHSA-v2v4-37r5-5v8g), reached through `express-rate-limit`
+- **MODERATE** — `protobufjs` DoS via unbounded recursive JSON descriptor expansion (GHSA-jggg-4jg4-v7c6)
+
+Applied `npm audit fix` plus a new `overrides` field in `package.json` pinning safe minimums (`fast-uri >=3.1.2`, `hono >=4.12.18`, `express-rate-limit >=8.5.1`, `ip-address >=10.1.1`, `protobufjs >=7.5.8`). The lockfile isn't shipped to npm consumers, so `overrides` is what protects downstream installs via fresh resolution. `npm audit` now reports 0 vulnerabilities.
+
 ## [0.4.1] — 2026-05-21
 
 ### Fixed — `decision_log` over-supersession on type collision

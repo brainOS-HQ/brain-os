@@ -1,6 +1,6 @@
 {
   "name": "brain-os",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Operational memory for AI agents. Persistent entity state, decisions, patterns, and priorities across sessions.",
   "type": "module",
   "main": "dist/index.js",
@@ -39,6 +39,13 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "fast-uri": ">=3.1.2",
+    "hono": ">=4.12.18",
+    "express-rate-limit": ">=8.5.1",
+    "ip-address": ">=10.1.1",
+    "protobufjs": ">=7.5.8"
   },
   "engines": {
     "node": ">=18"
