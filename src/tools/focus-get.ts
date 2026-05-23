@@ -2,7 +2,7 @@ import { Entity } from "../schemas/entity.js";
 import { Decision } from "../schemas/decision.js";
 import { Pattern } from "../schemas/pattern.js";
 import { readJsonFile, listJsonFiles, getEntitiesDir, getDecisionsDir, getPatternsDir } from "../utils/file-store.js";
-import { calculateStaleness } from "../utils/staleness.js";
+import { calculateStaleness, today } from "../utils/staleness.js";
 
 interface FocusItem {
   entity_id: string;
@@ -21,8 +21,22 @@ interface FocusResult {
   constraints_applied: string | null;
 }
 
-export async function getFocus(constraints?: string, maxResults?: number): Promise<FocusResult> {
+export async function getFocus(
+  constraints?: string,
+  maxResults?: number,
+  options?: { suppress_default_guidance?: boolean },
+): Promise<FocusResult> {
   const max = maxResults || 3;
+  // Allow callers (or env) to suppress the built-in "Do not …" lines.
+  // Env var is the escape hatch for embedded consumers (EVA, custom voices).
+  const suppressDefaults =
+    options?.suppress_default_guidance === true ||
+    process.env.BRAIN_FOCUS_OMIT_DEFAULT_GUIDANCE === "1";
+  // Local date string in the user's timezone, e.g. "2026-05-23".
+  // Avoid `new Date(d.review_date) <= new Date()` because parsing
+  // "YYYY-MM-DD" coerces to UTC midnight, which fires the overdue flag
+  // hours early or late depending on the local timezone offset.
+  const todayStr = today();
 
   const entityFiles = await listJsonFiles(getEntitiesDir());
   const entities: Entity[] = [];
@@ -58,13 +72,13 @@ export async function getFocus(constraints?: string, maxResults?: number): Promi
     const evidence: string[] = [];
 
     const priorityScores = { critical: 40, high: 30, medium: 15, low: 5 };
-    score += priorityScores[entity.priority] || 0;
+    score += priorityScores[entity.priority] ?? 0;
     if (entity.priority === "critical" || entity.priority === "high") {
       reasons.push(`Priority: ${entity.priority}`);
     }
 
     const momentumScores = { high: 25, medium: 15, low: 5, stalled: -5 };
-    score += momentumScores[entity.momentum] || 0;
+    score += momentumScores[entity.momentum] ?? 0;
     if (entity.momentum === "high") {
       reasons.push("Has momentum — ride the wave");
       evidence.push(`Momentum is ${entity.momentum}`);
@@ -96,7 +110,7 @@ export async function getFocus(constraints?: string, maxResults?: number): Promi
       (d) => d.entity_id === entity.id && d.status === "active"
     );
     const overdueProofs = entityDecisions.filter(
-      (d) => new Date(d.review_date) <= new Date()
+      (d) => d.review_date <= todayStr
     );
     if (overdueProofs.length > 0) {
       score += 10;
@@ -135,11 +149,13 @@ export async function getFocus(constraints?: string, maxResults?: number): Promi
     }
   }
 
-  do_not_do.push("Do not reorganize files or restructure projects");
-  do_not_do.push("Do not start new ideas — finish what's in progress");
+  if (!suppressDefaults) {
+    do_not_do.push("Do not reorganize files or restructure projects");
+    do_not_do.push("Do not start new ideas — finish what's in progress");
+  }
 
   const unreviewed_decisions = allDecisions
-    .filter((d) => d.status === "active" && new Date(d.review_date) <= new Date())
+    .filter((d) => d.status === "active" && d.review_date <= todayStr)
     .map((d) => ({
       entity_id: d.entity_id,
       decision: d.decision,

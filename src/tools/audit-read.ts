@@ -8,6 +8,7 @@ interface AuditReadResult {
   entries: AuditEntry[];
   total: number;
   showing: number;
+  malformed_lines: number;
 }
 
 export async function readAuditLog(options?: {
@@ -17,13 +18,26 @@ export async function readAuditLog(options?: {
 }): Promise<AuditReadResult> {
   const path = join(getBrainDir(), "audit.jsonl");
   if (!existsSync(path)) {
-    return { entries: [], total: 0, showing: 0 };
+    return { entries: [], total: 0, showing: 0, malformed_lines: 0 };
   }
 
   const raw = await readFile(path, "utf-8");
   const lines = raw.trim().split("\n").filter(Boolean);
 
-  let entries: AuditEntry[] = lines.map((line) => JSON.parse(line));
+  // Parse line-by-line and skip-with-count any that fail. Concurrent
+  // appendFile from multiple MCP clients can interleave writes that exceed
+  // PIPE_BUF (~4 KB), and any external editor that touches the file can
+  // produce malformed lines. Previously a single bad line crashed audit_log
+  // permanently. Now we report the skip count and keep going.
+  let entries: AuditEntry[] = [];
+  let malformed = 0;
+  for (const line of lines) {
+    try {
+      entries.push(JSON.parse(line) as AuditEntry);
+    } catch {
+      malformed++;
+    }
+  }
 
   const total = entries.length;
 
@@ -37,5 +51,5 @@ export async function readAuditLog(options?: {
   const limit = options?.last_n ?? 20;
   entries = entries.slice(-limit);
 
-  return { entries, total, showing: entries.length };
+  return { entries, total, showing: entries.length, malformed_lines: malformed };
 }

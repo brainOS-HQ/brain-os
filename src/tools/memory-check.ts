@@ -92,7 +92,7 @@ export async function checkMemory(entityId?: string): Promise<MemoryCheckResult>
     else if (
       entity.mode === "active" &&
       entity.momentum === "stalled" &&
-      entityDecisions.some((d) => new Date(d.review_date) <= new Date(todayStr))
+      entityDecisions.some((d) => d.review_date <= todayStr)
     ) {
       dangerous.push({
         entity_id: entity.id,
@@ -159,7 +159,7 @@ export async function checkMemory(entityId?: string): Promise<MemoryCheckResult>
 
   // Check overdue decision reviews
   const overdue_reviews = allDecisions
-    .filter((d) => d.status === "active" && new Date(d.review_date) <= new Date(todayStr))
+    .filter((d) => d.status === "active" && d.review_date <= todayStr)
     .map((d) => ({
       decision_id: d.id,
       entity_id: d.entity_id,

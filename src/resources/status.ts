@@ -45,7 +45,7 @@ export async function generateStatusBrief(): Promise<string> {
   );
 
   const overdueDecisions = allDecisions.filter(
-    (d) => d.status === "active" && new Date(d.review_date) <= new Date(todayStr)
+    (d) => d.status === "active" && d.review_date <= todayStr
   );
 
   const activePatterns = allPatterns.filter((p) => p.status === "active");

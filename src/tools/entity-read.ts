@@ -1,6 +1,6 @@
 import { Entity, EntitySummary } from "../schemas/entity.js";
-import { readJsonFile, listJsonFiles, getEntitiesDir, getDecisionsDir } from "../utils/file-store.js";
-import { calculateStaleness } from "../utils/staleness.js";
+import { readJsonFile, listJsonFiles, getEntitiesDir, getDecisionsDir, assertSafeId } from "../utils/file-store.js";
+import { calculateStaleness, today } from "../utils/staleness.js";
 import { Decision } from "../schemas/decision.js";
 
 export async function readEntity(entityId: string): Promise<{
@@ -9,6 +9,7 @@ export async function readEntity(entityId: string): Promise<{
   recent_decisions: Decision[];
   alerts: string[];
 }> {
+  assertSafeId(entityId, "entity_id");
   const path = `${getEntitiesDir()}/${entityId}.json`;
   const entity = await readJsonFile<Entity>(path);
 
@@ -43,10 +44,10 @@ export async function readEntity(entityId: string): Promise<{
     alerts.push(`BLOCKED: ${entity.blocked}`);
   }
 
-  const unreviewedDecisions = recent_decisions.filter((d) => {
-    const reviewDate = new Date(d.review_date);
-    return reviewDate <= new Date();
-  });
+  // String compare avoids UTC-vs-local Date parsing drift; today() returns
+  // local-tz YYYY-MM-DD, review_date is the same format, both zero-padded.
+  const todayStr = today();
+  const unreviewedDecisions = recent_decisions.filter((d) => d.review_date <= todayStr);
   for (const d of unreviewedDecisions) {
     alerts.push(`DECISION REVIEW DUE: "${d.decision}" — review was due ${d.review_date}`);
   }

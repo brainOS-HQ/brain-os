@@ -1,5 +1,5 @@
 import { Entity } from "../schemas/entity.js";
-import { readJsonFile, writeJsonFile, listJsonFiles, getEntitiesDir, getDecisionsDir, getSessionsDir } from "../utils/file-store.js";
+import { readJsonFile, writeJsonFile, listJsonFiles, getEntitiesDir, getDecisionsDir, getSessionsDir, assertSafeId } from "../utils/file-store.js";
 import { today } from "../utils/staleness.js";
 import { logDecision } from "./decision-log.js";
 import { join } from "path";
@@ -30,6 +30,14 @@ interface CommitResult {
 }
 
 export async function commitMemory(input: CommitInput): Promise<CommitResult> {
+  for (const eid of input.entities_touched) assertSafeId(eid, "entity_id");
+  if (input.decisions_made) {
+    for (const d of input.decisions_made) assertSafeId(d.entity_id, "entity_id");
+  }
+  if (input.momentum_changes) {
+    for (const m of input.momentum_changes) assertSafeId(m.entity_id, "entity_id");
+  }
+
   const todayStr = today();
   const sessionId = `session-${todayStr}-${Date.now()}`;
   setSessionId(sessionId);

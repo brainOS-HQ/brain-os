@@ -1,5 +1,5 @@
 import { Entity, PlanStep } from "../schemas/entity.js";
-import { readJsonFile, writeJsonFile, getEntitiesDir } from "../utils/file-store.js";
+import { readJsonFile, writeJsonFile, getEntitiesDir, assertSafeId } from "../utils/file-store.js";
 import { today } from "../utils/staleness.js";
 import { audit } from "../utils/audit.js";
 
@@ -60,6 +60,7 @@ export async function setPlan(input: PlanSetInput): Promise<{
   plan: PlanStep[];
   next_move: string;
 }> {
+  assertSafeId(input.entity_id, "entity_id");
   const path = `${getEntitiesDir()}/${input.entity_id}.json`;
   const entity = await readJsonFile<Entity>(path);
   if (!entity) throw new Error(`Entity "${input.entity_id}" not found.`);
@@ -97,6 +98,8 @@ export async function advancePlan(input: PlanStepAction): Promise<{
   next_move: string;
   plan_progress: string;
 }> {
+  assertSafeId(input.entity_id, "entity_id");
+  assertSafeId(input.step_id, "step_id");
   const path = `${getEntitiesDir()}/${input.entity_id}.json`;
   const entity = await readJsonFile<Entity>(path);
   if (!entity) throw new Error(`Entity "${input.entity_id}" not found.`);
@@ -152,6 +155,7 @@ export async function addPlanSteps(input: PlanAddInput): Promise<{
   added: PlanStep[];
   plan: PlanStep[];
 }> {
+  assertSafeId(input.entity_id, "entity_id");
   const path = `${getEntitiesDir()}/${input.entity_id}.json`;
   const entity = await readJsonFile<Entity>(path);
   if (!entity) throw new Error(`Entity "${input.entity_id}" not found.`);
@@ -205,6 +209,7 @@ export async function readPlan(entityId: string): Promise<{
   progress: string;
   next_move: string;
 }> {
+  assertSafeId(entityId, "entity_id");
   const path = `${getEntitiesDir()}/${entityId}.json`;
   const entity = await readJsonFile<Entity>(path);
   if (!entity) throw new Error(`Entity "${entityId}" not found.`);

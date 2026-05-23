@@ -131,9 +131,16 @@ export function registerTools(server: McpServer) {
     {
       constraints: z.string().optional().describe("Optional: 'only 2 hours', 'low energy', etc."),
       max_results: z.number().optional().describe("Max priorities to return (default 3)"),
+      suppress_default_guidance: z
+        .boolean()
+        .optional()
+        .describe(
+          "Set true to omit the built-in 'Do not reorganize…' / 'Do not start new ideas…' lines from do_not_do. " +
+          "Default false. Env override: BRAIN_FOCUS_OMIT_DEFAULT_GUIDANCE=1."
+        ),
     },
-    async ({ constraints, max_results }) => {
-      const result = await getFocus(constraints, max_results);
+    async ({ constraints, max_results, suppress_default_guidance }) => {
+      const result = await getFocus(constraints, max_results, { suppress_default_guidance });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );

@@ -2,6 +2,95 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.4.3] — 2026-05-23
+
+> Patch release: security + correctness fixes from a four-round code audit, plus the step-008 cross-client init feature that was already committed (`9d75906`). v0.5.0 reserved for step-009 (MCP Prompts) — see ROADMAP.
+
+### Added — `brain-os init` installs AGENTS.md + 5 client pointer templates
+
+- Closes the cross-client UX consistency gap surfaced 2026-05-20: GitHub Copilot output was a verbose paraphrase until `AGENTS.md` + `.github/copilot-instructions.md` were manually scaffolded; after scaffolding, output became a clean fixed-format table matching Claude Code's slash-command UX.
+- New `templates/agent-instructions/` ships 6 generic templates: `AGENTS.md` (canonical, cross-tool), `CLAUDE.md`, `copilot-instructions.md`, `cursor-brain-os.mdc`, `zed-rules.md`, `windsurfrules`.
+- Per dec-023 (2026-05-22): install-all by default. New `--minimal` flag opts out down to just `AGENTS.md` + `CLAUDE.md`. New `--no-agent-instructions` flag skips all of them.
+- `installAgentInstructions()` preserves existing files (no clobber) and reports installed / preserved / skipped_minimal in the output.
+- This feature was committed in `9d75906` (titled "v0.5.0: …") but never version-bumped. It ships in 0.4.3 alongside this audit's bug fixes; v0.5.0 is reserved for the step-009 MCP Prompts feature still to come.
+
+### Fixed — `decision_check` false-STOP on aligned proposals (HIGH)
+
+- The directional semantic layer now compares rejected-facet vs chosen-facet similarity before promoting to `conflict`. A proposal 0.95-similar to chosen and 0.66-similar to rejected used to hard-STOP; now it correctly drops as alignment. Cleared an entire class of false STOPs that the v0.4.1 facet split introduced.
+
+### Fixed — `decision_check` embedding-error fail-open (HIGH)
+
+- Distinguished `EmbeddingsNotConfiguredError` (soft, no-op) from real provider crashes. A transient OpenAI 500 or local-model failure no longer reads as "embeddings unset" — it surfaces in the response as `embeddings_error` and appears in the guidance string so the caller knows conflicts may be under-reported.
+
+### Fixed — embeddings store non-atomic write (HIGH)
+
+- `saveEmbeddings` now writes to a per-process tmp file and renames into place. Prevents corruption from concurrent writers (multiple MCP clients sharing a `.brain/`) or mid-write crashes leaving partial JSON.
+
+### Fixed — `focus_get` timezone bug (HIGH)
+
+- Overdue-decision and unreviewed-decision checks now compare `YYYY-MM-DD` strings against the local date, not `new Date("YYYY-MM-DD")` which parses as UTC midnight. In non-UTC timezones the old code flagged decisions as overdue hours before (or after) the local review day arrived.
+
+### Fixed — `focus_get` hardcoded English guidance lines (HIGH)
+
+- The built-in `do_not_do` lines ("Do not reorganize files…", "Do not start new ideas…") are now opt-out via a new `suppress_default_guidance` tool parameter or the `BRAIN_FOCUS_OMIT_DEFAULT_GUIDANCE=1` env var. Default behavior unchanged for existing callers; embedded consumers can suppress.
+
+### Fixed — `decision_check` substring false-positives (MEDIUM)
+
+- Keyword and negation-pair matching no longer uses raw `.includes()`. Replaced with word-boundary regex via a new `containsWord()` helper, so `"add"` no longer matches inside `"address"`/`"padding"`, `"use"` inside `"reuse"`/`"because"`, `"api"` inside `"capability"`, etc. Fix applied across all 17 opposite pairs in `extractNegationConflicts`, the rejected-alternative word overlap (Layer 1), and the topic-overlap `why` field check (Layer 3).
+
+### Fixed — embeddings silent provider switch (MEDIUM)
+
+- `semanticRecall` now warns to stderr (once per session) when the active provider can't see vectors from a different provider stored earlier — e.g. switching `BRAIN_EMBEDDINGS=local` → `openai`. Message tells the user how to re-embed. Previously, `decision_check`'s rejected-facet hits would silently return empty after a provider switch, with no signal that anything was wrong.
+
+### Fixed — staleness negative-day rendering (MEDIUM)
+
+- `calculateStaleness` now clamps days at 0. A future-dated entity (timezone edge case, pasted-in placeholder) no longer renders as `"Fresh (-5d ago)"`.
+
+### Fixed — `focus_get` priority/momentum score fallthrough (MEDIUM)
+
+- Replaced `priorityScores[entity.priority] || 0` and the equivalent for momentum with `?? 0`. Defensive — current enums don't include `0` as a valid score, but `??` is the correct operator and prevents future-bug-via-rename.
+
+### Fixed — `pattern_detect` dead code removed (MEDIUM)
+
+- Stripped the `relatedGroups` and `decisionsByType` maps that were built but never read or returned. The "related entities that could share work" pattern claimed in the comment was never emitted; removed the dead branch entirely.
+
+### Changed — `audit()` accepts per-call `session_id` (MEDIUM)
+
+- New optional `session_id` field on `audit()` options. The module-level `currentSessionId` singleton stays as the default (no behavior change for stdio), but stateless contexts (e.g. a Worker port) can now pass a session per call.
+
+### Docs — README, ROADMAP, SECURITY drift fixes
+
+- README "Testing" section rewritten to reflect that `npm test` is wired and `tests/smoke.mjs` covers 24 tests across 9 tools — was previously claiming "no test suite yet." Listed gaps explicitly.
+- README quick-start now documents AGENTS.md + 5 client pointer files, plus `--minimal` and `--no-agent-instructions` flags.
+- ROADMAP smoke-suite line updated to the correct tool count.
+- SECURITY.md "npm audit" claim corrected — runs on every push/PR/cron, not gated on release tags. Supported-versions table remains 0.4.x active (v0.5.0 is reserved for step-009).
+- Post-install banner in `brain-os init` now lists `decision_refresh` (was missing since v0.4.0).
+
+### Security — path traversal hardening via `assertSafeId` (HIGH)
+
+- All user-supplied identifiers (`entity_id`, `decision_id`, `step_id`, `supersedes[]`) that get concatenated into filesystem paths are now validated against a strict whitelist (kebab-case + alphanumeric + underscore, 1–100 chars, no leading dot, no `/` `\` `..` null-byte). Previously a caller passing `entity_id: "../../etc/passwd"` could escape `.brain/` and clobber or exfiltrate arbitrary files (subject to OS perms). Wired into `entity_update`, `entity_read`, `plan_set/advance/add/read`, `decision_log`, `decision_refresh`, `memory_commit`, `pulse-sync`.
+
+### Fixed — `audit_log` survives malformed JSONL lines (HIGH)
+
+- `readAuditLog` previously did `lines.map(JSON.parse)` with no guard. A single corrupted line — from a hand-edit, a crash mid-write, or interleaved concurrent `appendFile` writes that exceed `PIPE_BUF` (~4 KB) — crashed `audit_log` permanently until manual repair. Now parses per-line in a try/catch, skips broken lines, and reports the skip count in a new `malformed_lines` field on the response.
+
+### Fixed — `writeJsonFile` is atomic for all entity/decision/plan writes (MEDIUM)
+
+- All write paths now go through a unique-tmp + `rename` pattern (same as `embeddings.ts` got in this release). Prevents corruption from mid-write crashes and from another process reading a half-written file. **Known limit:** does not prevent the load-modify-save race across multiple MCP client processes; tracked as v0.5.1 optimistic locking.
+- Tmp filenames include `pid + ms + random` so concurrent in-process writes (e.g. `Promise.all`) can't collide on the same tmp path.
+
+### Fixed — `decision_log` id collision under concurrent calls (MEDIUM)
+
+- Decision IDs are now `dec-${timestamp}-${random}` for new decisions. The old `dec-${length+1}` scheme assigned the same ID to two callers who read `decisions.json` near-simultaneously, dropping one of the writes. First-time use still gets `dec-001`. Existing dec-NNN IDs are not migrated.
+
+### Security — transitive `qs` DoS resolved (MODERATE)
+
+- `qs` 6.11.1 – 6.15.1 (`GHSA-q8mj-m7cp-5q26`): `qs.stringify` crashes with `TypeError` on null/undefined entries in comma-format arrays when `encodeValuesOnly` is set. Pulled in transitively via `@modelcontextprotocol/sdk` → `express@5.2.1` → `qs@6.15.1`. Brain OS uses stdio transport, so the HTTP request-parsing path isn't exercised at runtime — but the dep still loads with the SDK. Pinned `qs >=6.15.2` in `package.json` `overrides`. `npm audit` now reports 0 vulnerabilities.
+
+### Added — smoke test expansion
+
+- `tests/smoke.mjs` adds 14 regression tests for this release's fixes: word-boundary regex (substring false-positive), `decision_check` `embeddings_error` field stability, staleness negative-day clamp, `today()` host-local date contract, `focus_get` overdue (today + tomorrow), `focus_get` `suppress_default_guidance`, `assertSafeId` rejection of `..` / `/` / `.` / null-byte across `entity_id`/`decision_id`/`step_id` and acceptance of valid kebab-case, `audit_log` survives malformed JSONL, `decision_log` 20-sequential unique-id + all-persisted assertion, and `writeJsonFile` atomic-write leaves no tmp leftovers. Total now 24 tests across 9 tools; each HIGH- and MEDIUM-severity bug from this release ships with a regression test.
+
 ## [0.4.2] — 2026-05-22
 
 ### Security — transitive vulns in MCP SDK HTTP layer resolved

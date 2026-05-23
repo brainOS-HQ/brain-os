@@ -1,5 +1,5 @@
 import { Decision } from "../schemas/decision.js";
-import { readJsonFile, writeJsonFile, listJsonFiles, getDecisionsDir, getEntitiesDir } from "../utils/file-store.js";
+import { readJsonFile, writeJsonFile, listJsonFiles, getDecisionsDir, getEntitiesDir, assertSafeId } from "../utils/file-store.js";
 import { today } from "../utils/staleness.js";
 import { Entity } from "../schemas/entity.js";
 import { join } from "path";
@@ -18,15 +18,40 @@ interface DecisionInput {
   supersedes?: string[];
 }
 
+// Generate a decision id that won't collide under concurrent decision_log
+// calls from multiple MCP clients. Old `dec-NNN` sequential format is only
+// used when no decisions exist yet (keeps the first few readable). Once
+// any decision exists, switch to a timestamp+random suffix so two clients
+// reading the same length(=5) array won't both emit `dec-006`.
+function nextDecisionId(existing: Decision[]): string {
+  if (existing.length === 0) return "dec-001";
+  // Hex timestamp keeps the prefix short and roughly sortable. Random
+  // suffix prevents same-ms collision. 36-bit timestamp + 16-bit random
+  // → at one call per ms, P(collision) is ~1/65k per parallel pair.
+  const ts = Date.now().toString(36);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const rand = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+    const id = `dec-${ts}-${rand}`;
+    if (!existing.some((d) => d.id === id)) return id;
+  }
+  // Pathological: 8 random suffixes all collided in the same ms. Fall back
+  // to a longer random tail. Effectively unreachable but defensive.
+  return `dec-${ts}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function logDecision(input: DecisionInput): Promise<{
   logged: Decision;
   superseded: string[];
   entity_updated: boolean;
 }> {
+  assertSafeId(input.entity_id, "entity_id");
+  if (input.supersedes) {
+    for (const sid of input.supersedes) assertSafeId(sid, "supersedes id");
+  }
   const decisionsFile = join(getDecisionsDir(), "decisions.json");
   const existing = (await readJsonFile<Decision[]>(decisionsFile)) || [];
 
-  const id = `dec-${String(existing.length + 1).padStart(3, "0")}`;
+  const id = nextDecisionId(existing);
 
   const decision: Decision = {
     id,

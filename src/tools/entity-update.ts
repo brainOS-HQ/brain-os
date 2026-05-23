@@ -1,5 +1,5 @@
 import { Entity } from "../schemas/entity.js";
-import { readJsonFile, writeJsonFile, getEntitiesDir } from "../utils/file-store.js";
+import { readJsonFile, writeJsonFile, getEntitiesDir, assertSafeId } from "../utils/file-store.js";
 import { calculateStaleness, today } from "../utils/staleness.js";
 import { embedEntity } from "../utils/embeddings.js";
 import { audit } from "../utils/audit.js";
@@ -27,6 +27,7 @@ export async function updateEntity(
   staleness: { level: string; days: number; label: string };
   changes: string[];
 }> {
+  assertSafeId(entityId, "entity_id");
   const path = `${getEntitiesDir()}/${entityId}.json`;
   const entity = await readJsonFile<Entity>(path);
 

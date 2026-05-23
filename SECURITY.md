@@ -60,8 +60,8 @@ First `npm audit` pass on the published package surfaced 5 vulnerabilities, all 
 
 ## Dependency Hygiene
 
-- `npm audit` is run before every release; releases require a clean audit
-- The `overrides` field in `package.json` pins safe minimums for known-vulnerable transitive dependencies
+- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml) — any vulnerability fails CI before it can reach a release
+- The `overrides` field in `package.json` pins safe minimums for known-vulnerable transitive dependencies, so downstream consumers get the patched versions on fresh install
 - GitHub Dependabot is enabled for weekly transitive bump PRs
 
 ## Local State Considerations

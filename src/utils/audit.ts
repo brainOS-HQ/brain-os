@@ -39,6 +39,9 @@ export async function audit(
     entity_id?: string;
     before?: unknown;
     after?: unknown;
+    // Pass explicitly when running in a stateless context (e.g. a Worker)
+    // where the module-level singleton can't carry the session across calls.
+    session_id?: string;
   }
 ): Promise<void> {
   const dir = getBrainDir();
@@ -52,7 +55,7 @@ export async function audit(
     summary,
     before: options?.before ?? null,
     after: options?.after ?? null,
-    session_id: getSessionId(),
+    session_id: options?.session_id ?? getSessionId(),
   };
 
   await appendFile(getAuditPath(), JSON.stringify(entry) + "\n", "utf-8");

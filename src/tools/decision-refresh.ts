@@ -1,5 +1,5 @@
 import { Decision } from "../schemas/decision.js";
-import { readJsonFile, writeJsonFile, getDecisionsDir } from "../utils/file-store.js";
+import { readJsonFile, writeJsonFile, getDecisionsDir, assertSafeId } from "../utils/file-store.js";
 import { today } from "../utils/staleness.js";
 import { embedDecision } from "../utils/embeddings.js";
 import { audit } from "../utils/audit.js";
@@ -31,6 +31,7 @@ interface RefreshResult {
  * decision via `decision_log`.
  */
 export async function refreshDecision(input: RefreshInput): Promise<RefreshResult> {
+  assertSafeId(input.decision_id, "decision_id");
   const decisionsFile = join(getDecisionsDir(), "decisions.json");
   const decisions = (await readJsonFile<Decision[]>(decisionsFile)) || [];
 

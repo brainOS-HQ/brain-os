@@ -1,7 +1,7 @@
 import { Decision } from "../schemas/decision.js";
 import { readJsonFile, listJsonFiles, getDecisionsDir } from "../utils/file-store.js";
 import { audit } from "../utils/audit.js";
-import { semanticRecall } from "../utils/embeddings.js";
+import { semanticRecall, EmbeddingsNotConfiguredError } from "../utils/embeddings.js";
 
 interface CheckInput {
   proposed_action: string;
@@ -21,6 +21,25 @@ interface CheckResult {
   status: "clear" | "conflict" | "caution";
   conflicts: Conflict[];
   guidance: string;
+  embeddings_error?: string;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Word-boundary match — "add" no longer matches inside "address" or "padding".
+// Falls back to substring for tokens that don't start/end with a word char (rare
+// in our keyword lists, but keeps the function total).
+function containsWord(text: string, token: string): boolean {
+  if (!token) return false;
+  const trimmed = token.trim();
+  if (!trimmed) return false;
+  const startsWord = /^\w/.test(trimmed);
+  const endsWord = /\w$/.test(trimmed);
+  const left = startsWord ? "\\b" : "";
+  const right = endsWord ? "\\b" : "";
+  return new RegExp(`${left}${escapeRegex(trimmed)}${right}`, "i").test(text);
 }
 
 export async function checkDecision(input: CheckInput): Promise<CheckResult> {
@@ -64,7 +83,7 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
     for (const alt of decision.alternatives || []) {
       const altLower = alt.option.toLowerCase();
       const altWords = altLower.split(/\s+/).filter((w) => w.length > 3);
-      const overlap = altWords.filter((w) => proposedLower.includes(w));
+      const overlap = altWords.filter((w) => containsWord(proposedLower, w));
       const overlapRatio = altWords.length > 0 ? overlap.length / altWords.length : 0;
 
       if (overlapRatio >= 0.5) {
@@ -87,7 +106,7 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
 
     // Layer 3: topic overlap → caution only (never promoted to conflict)
     const decisionWords = decisionLower.split(/\s+/).filter((w) => w.length > 3);
-    const topicOverlap = proposedWords.filter((w) => decisionWords.includes(w) || whyLower.includes(w));
+    const topicOverlap = proposedWords.filter((w) => decisionWords.includes(w) || containsWord(whyLower, w));
     if (topicOverlap.length >= 3) {
       topicCautions.push({
         decision_id: decision.id,
@@ -100,8 +119,14 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
     }
   }
 
-  // Directional semantic layer — separates "matches rejected" from "matches chosen"
+  // Directional semantic layer — separates "matches rejected" from "matches chosen".
+  // We distinguish three states:
+  //   - available + healthy        : both rejected/chosen lookups completed
+  //   - unavailable (not configured): BRAIN_EMBEDDINGS unset → soft, no warning
+  //   - degraded (provider crashed) : real error → surface in response so the caller
+  //                                    knows conflicts may be under-reported
   let embeddingsAvailable = true;
+  let embeddingsError: string | null = null;
   const rejectedHits = new Map<string, number>();
   const chosenHits = new Map<string, number>();
 
@@ -121,8 +146,11 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
       threshold: 0.5,
     });
     for (const m of chosenMatches) chosenHits.set(m.source_id, m.similarity);
-  } catch {
+  } catch (e) {
     embeddingsAvailable = false;
+    if (!(e instanceof EmbeddingsNotConfiguredError)) {
+      embeddingsError = e instanceof Error ? e.message : String(e);
+    }
   }
 
   const conflicts: Conflict[] = [];
@@ -140,22 +168,43 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
       review_date: flag.decision.review_date,
     };
 
-    if (embeddingsAvailable && rejectedSim !== undefined) {
-      // Keyword + semantic-rejected hit = real conflict
+    // Promote to conflict only when rejected-facet similarity beats chosen-facet
+    // similarity. A proposal that's 0.95-similar to chosen and 0.66-similar to
+    // rejected aligns with the decision — don't hard-STOP on it.
+    const alignsRejected =
+      embeddingsAvailable &&
+      rejectedSim !== undefined &&
+      (chosenSim === undefined || rejectedSim > chosenSim);
+    const alignsChosen =
+      embeddingsAvailable &&
+      chosenSim !== undefined &&
+      (rejectedSim === undefined || chosenSim >= rejectedSim);
+
+    if (alignsRejected) {
+      const sims =
+        chosenSim !== undefined
+          ? `rejected ${(rejectedSim! * 100).toFixed(0)}% > chosen ${(chosenSim * 100).toFixed(0)}%`
+          : `rejected ${(rejectedSim! * 100).toFixed(0)}%`;
       conflicts.push({
         ...base,
-        conflict_reason: `${flag.reason} Semantic similarity to rejected alternatives: ${(rejectedSim * 100).toFixed(0)}%.`,
+        conflict_reason: `${flag.reason} Semantic similarity: ${sims}.`,
       });
-    } else if (embeddingsAvailable && chosenSim !== undefined && rejectedSim === undefined) {
-      // Keyword hit but semantic says action aligns with chosen direction — drop false positive
+    } else if (alignsChosen) {
+      // Action aligns with chosen direction more than rejected — drop false positive
       continue;
     } else {
       // No semantic confirmation either way — stay a caution, not a hard stop
+      let reasonSuffix: string;
+      if (embeddingsError) {
+        reasonSuffix = `(Embeddings provider error during check — treating as caution. Error: ${embeddingsError})`;
+      } else if (embeddingsAvailable) {
+        reasonSuffix = "(Keyword heuristic only; no semantic confirmation.)";
+      } else {
+        reasonSuffix = "(Embeddings not configured; cannot verify semantic conflict — treating as caution.)";
+      }
       cautions.push({
         ...base,
-        conflict_reason: embeddingsAvailable
-          ? `${flag.reason} (Keyword heuristic only; no semantic confirmation.)`
-          : `${flag.reason} (Embeddings not configured; cannot verify semantic conflict — treating as caution.)`,
+        conflict_reason: `${flag.reason} ${reasonSuffix}`,
       });
     }
   }
@@ -189,13 +238,27 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
     guidance = "No conflicts found with active decisions. Proceed.";
   }
 
+  if (embeddingsError) {
+    guidance += ` Warning: embeddings provider failed during check (${embeddingsError}); semantic conflicts may be under-reported.`;
+  }
+
   await audit("decision_check", "check", `${status}: "${input.proposed_action.slice(0, 100)}"`, {
     entity_id: input.entity_id,
     before: null,
-    after: { status, conflicts_found: conflicts.length, cautions_found: cautions.length },
+    after: {
+      status,
+      conflicts_found: conflicts.length,
+      cautions_found: cautions.length,
+      embeddings_error: embeddingsError,
+    },
   });
 
-  return { status, conflicts: [...conflicts, ...cautions], guidance };
+  return {
+    status,
+    conflicts: [...conflicts, ...cautions],
+    guidance,
+    ...(embeddingsError ? { embeddings_error: embeddingsError } : {}),
+  };
 }
 
 function extractNegationConflicts(proposed: string, decided: string): string | null {
@@ -221,11 +284,12 @@ function extractNegationConflicts(proposed: string, decided: string): string | n
   ];
 
   for (const [a, b] of opposites) {
-    if (
-      (proposed.includes(a) && decided.includes(b)) ||
-      (proposed.includes(b) && decided.includes(a))
-    ) {
-      return `Directional conflict: proposed action uses "${proposed.includes(a) ? a : b}" but decision chose "${decided.includes(a) ? a : b}"`;
+    const proposedA = containsWord(proposed, a);
+    const proposedB = containsWord(proposed, b);
+    const decidedA = containsWord(decided, a);
+    const decidedB = containsWord(decided, b);
+    if ((proposedA && decidedB) || (proposedB && decidedA)) {
+      return `Directional conflict: proposed action uses "${proposedA ? a : b}" but decision chose "${decidedA ? a : b}"`;
     }
   }
 

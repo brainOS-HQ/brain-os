@@ -101,23 +101,6 @@ export async function detectPatterns(scope?: string): Promise<PatternResult> {
     });
   }
 
-  // Pattern: Related entities that could share work
-  const relatedGroups = new Map<string, Set<string>>();
-  for (const e of entities) {
-    for (const related of e.related_entities) {
-      const key = [e.id, related].sort().join("--");
-      if (!relatedGroups.has(key)) relatedGroups.set(key, new Set());
-      relatedGroups.get(key)!.add(e.id);
-      relatedGroups.get(key)!.add(related);
-    }
-  }
-
-  // Pattern: Decision type concentration
-  const decisionsByType = new Map<string, number>();
-  for (const d of allDecisions.filter((d) => d.status === "active" && d.type)) {
-    decisionsByType.set(d.type!, (decisionsByType.get(d.type!) || 0) + 1);
-  }
-
   // Check existing patterns
   const existing_patterns = existingPatterns.map((p) => {
     const affectedEntities = entities.filter((e) => p.entities_affected.includes(e.id));

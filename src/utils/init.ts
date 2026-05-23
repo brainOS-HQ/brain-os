@@ -3,6 +3,7 @@ import { join, dirname } from "path";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
+import { today } from "./staleness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -249,7 +250,7 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
 
     const config = {
       version: "0.1.0",
-      created_at: new Date().toISOString().split("T")[0],
+      created_at: today(),
       brain_dir: brainDir,
     };
     await writeFile(join(brainDir, "config.json"), JSON.stringify(config, null, 2));
@@ -386,7 +387,7 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
   output.push(JSON.stringify(mcpConfig, null, 2));
   output.push("");
   output.push("Then start a session. The agent will have these tools:");
-  output.push("  entity_read, entity_update, decision_log, decision_check,");
+  output.push("  entity_read, entity_update, decision_log, decision_check, decision_refresh,");
   output.push("  focus_get, pattern_detect, semantic_recall, audit_log,");
   output.push("  memory_check, memory_commit, plan_set/add/advance/read");
   output.push("");

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import { getBrainDir } from "./file-store.js";
+import { getBrainDir, assertSafeId } from "./file-store.js";
 import { Entity } from "../schemas/entity.js";
 import { calculateStaleness } from "./staleness.js";
 
@@ -16,6 +16,7 @@ import { calculateStaleness } from "./staleness.js";
  */
 export async function syncPulseFile(entity: Entity): Promise<string | null> {
   try {
+    assertSafeId(entity.id, "entity.id");
     const brainDir = getBrainDir();
     const pulseDir = join(brainDir, "pulses");
     await mkdir(pulseDir, { recursive: true });

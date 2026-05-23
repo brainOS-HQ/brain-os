@@ -56,12 +56,17 @@ That's the wedge: structured state with enforcement, so agents stop re-opening q
 npx brain-os init
 ```
 
-This does two things:
+This does three things:
 
 1. **Creates a `.brain/` directory** with your entity, decision, and pattern stores.
 2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/brain:focus`, `/brain:decide`, etc. directly in Claude Code. Bare aliases (`/focus`, `/decide`, etc.) install alongside for brevity.
+3. **Drops agent-instructions pointer files** so any MCP-compatible client behaves consistently: `AGENTS.md` (canonical, cross-tool) plus thin pointer files for Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md`), Cursor (`.cursor/rules/brain-os.mdc`), Zed (`.zed/rules.md`), and Windsurf (`.windsurfrules`).
 
-Skip the slash commands with `npx brain-os init --no-commands` if you only want the MCP server.
+Flags:
+
+- `npx brain-os init --minimal` — install only `AGENTS.md` + `CLAUDE.md`, skip the other client pointers (clean-repo mode)
+- `npx brain-os init --no-commands` — skip slash commands (MCP server only)
+- `npx brain-os init --no-agent-instructions` — skip all agent-instructions pointer files
 
 ### Connect to Claude Code
 
@@ -194,7 +199,22 @@ When an MCP client connects, Brain OS exposes a `brain://status` resource with a
 
 ## Testing
 
-Brain OS has no automated test suite yet. The 15 MCP tools are exercised through real daily use across 18 projects, but coverage is manual. Adding a smoke test suite for the core tools (`decision_log`, `decision_check`, `decision_refresh`, `entity_update`, `semantic_recall`) is on the roadmap.
+Brain OS ships a smoke test suite at [`tests/smoke.mjs`](./tests/smoke.mjs), wired to `npm test` and run on every push by [`.github/workflows/audit.yml`](./.github/workflows/audit.yml). Run locally:
+
+```bash
+npm test
+```
+
+Current coverage (regression + happy-path):
+
+- `decision_log` — type-collision no-supersede, explicit `supersedes` works, cross-entity supersession rejected
+- `decision_check` — keyword-only flag stays caution without embeddings (no false STOPs), asymmetric semantic comparison (rejected vs chosen facet)
+- `decision_refresh` — clears dangling `superseded_by` when status transitions away from `superseded`
+- `plan_advance` — no over-promotion when an active step already exists
+- `entity_update` — apply diff and record changes, missing-entity error, `mode_reason` required when parking
+- `semantic_recall` — throws `EmbeddingsNotConfiguredError` (not generic Error) when `BRAIN_EMBEDDINGS` is unset
+
+Known gaps (no direct coverage yet): `focus_get` scoring, `pattern_detect` heuristics, `entity_*` happy-path edges, `memory_*`, `plan_set/add/read`, and the `brain://status` resource. Expanding the suite is on the roadmap.
 
 If you hit a bug, please open an issue with the tool, input, and output — that's the fastest path to a fix.
 
