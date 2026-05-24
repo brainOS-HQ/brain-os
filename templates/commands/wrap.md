@@ -98,6 +98,10 @@ If yes, call `pattern_detect` to confirm it (or update existing).
 ==============================
 ```
 
+## Autowrap
+
+If context compression fires during a session (the system summarizes earlier messages), treat it as a signal that session state may be lost. Proactively trigger a wrap before continuing work — ask the user "Context is getting long. Want me to wrap before continuing?" If they agree, run this protocol. If they decline, continue but flag it once more if compression fires again.
+
 ## Rules
 
 - Never guess what changed. Always ask.

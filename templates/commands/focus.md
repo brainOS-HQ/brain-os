@@ -39,35 +39,35 @@ Write in PLAIN LANGUAGE. No JSON. No field names like entity_id or staleness.lev
 Use this pattern (adapt to content, don't copy robotically):
 
 ```
-Your top priority right now is [PROJECT NAME].
+Your top priority right now is **[PROJECT NAME]**.
 
-Do this next:
+**Do this next:**
 1. [One concrete action — not "think about X"]
 2. [Optional second step if obvious]
 
-Why this matters:
+**Why this matters:**
 [2 to 3 sentences in plain language. Strategic reason, consequence of not doing it, or what it unlocks. Not "it's overdue."]
 
-What not to do yet:
+**What not to do yet:**
 - [Shiny distraction to resist]
 - [Other project that can wait]
 - [Reorganization or new idea]
 
 [If there's a second priority, add it briefly:]
 
-After that, consider [SECOND PROJECT]:
+**After that, consider [SECOND PROJECT]:**
 [One sentence on what and why]
 
 ---
 [If staleness alerts exist for the FOCUSED project:]
-Heads up: this project hasn't been touched in [N] days. Either ship something or park it.
+**Heads up:** this project hasn't been touched in [N] days. Either ship something or park it.
 
 [If unreviewed decisions exist for the FOCUSED project:]
-Decision review due: "[decision text]" — reaffirm, update, or archive it.
+**Decision review due:** "[decision text]" — reaffirm, update, or archive it.
 
 ---
 [ALWAYS AT THE END. If staleness alerts or unreviewed decisions exist for OTHER projects:]
-Elsewhere in your workspace worth checking:
+**Elsewhere in your workspace worth checking:**
 - [PROJECT] hasn't been touched in [N] days — ship something or park it.
 - [PROJECT] has a decision review due: "[decision text]"
 [If nothing from other projects, omit this section entirely.]

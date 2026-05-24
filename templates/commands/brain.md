@@ -8,7 +8,22 @@ Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. It governs tool rou
 
 ## Input
 
-Arguments: `$ARGUMENTS` (format: `<entity-name>`). If no argument, show the master overview.
+Arguments: `$ARGUMENTS` (format: `<entity-name>` or `--resume`). If no argument, show the master overview.
+
+## Resume mode (`--resume`)
+
+When the argument is `--resume` (or contains `--resume`):
+
+1. Detect the current project slug from the working directory (e.g. `brain-os`, `jinx`, etc.).
+2. Read the bookmark file at `~/.claude/projects/-Users-tashaamanda/memory/last-session-<slug>.md`. If no project-specific one exists, try `last-session.md`.
+3. Extract the `**Transcript:**` path from the bookmark.
+4. Read the JSONL transcript and extract the **last 15 user/assistant text exchanges** (skip tool_use and tool_result blocks).
+5. Present a "**Resuming from last session**" block showing:
+   - When the session was saved
+   - The tail of the conversation (so the user can see what was discussed)
+6. THEN run the normal master overview (entity state + focus) to show current state on top of that context.
+
+This ensures that even if `/wrap` wasn't run, the user gets their conversation context back plus live project state.
 
 ## Primary tool sequence
 
@@ -55,9 +70,9 @@ Write in PLAIN LANGUAGE. The structured block is for scanability; follow it with
 ```
 
 After the block, add 2-3 sentences of plain-language context:
-- What was the last meaningful progress?
-- What decision is this building on?
-- What's the risk if this sits?
+- **Last progress:** What was the last meaningful thing that shipped?
+- **Building on:** What decision is this work based on?
+- **Risk if it sits:** What happens if this doesn't move?
 
 ## Output : master overview
 

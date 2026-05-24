@@ -2,6 +2,28 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.5.0] — 2026-05-24
+
+> Minor release: MCP Prompts, autowrap, and init cleanup.
+
+### Added — MCP Prompts: 8 commands available without `brain-os init`
+
+- Users who connect the MCP server without running init now get `/brain:wrap`, `/brain:focus`, `/brain:decide`, `/brain:retro`, `/brain:patterns`, `/brain:strategy`, `/brain:graph`, and `/brain` as MCP prompts — no skill file installation needed.
+- Duplicate-skip logic: if skill files are already installed (e.g. from a prior `brain-os init`), MCP Prompts are suppressed to avoid duplicate entries in the command picker.
+- Prompt handler loads the same `templates/commands/*.md` files used by skill-file installation, so behavior is identical either way.
+
+### Added — Autowrap on context compression
+
+- Wrap template now includes an autowrap section: when context compression fires during a long session, the agent proactively offers to wrap before session state is lost.
+
+### Changed — `brain-os init` installs only namespaced commands
+
+- Init now installs `/brain:focus`, `/brain:wrap`, etc. (namespaced under `brain/`). Previously it installed both flat (`/focus`) and namespaced (`/brain:focus`) forms, creating duplicates. Flat forms are no longer distributed — they're for developer use only.
+
+### Added — CI: GitHub Actions test workflow
+
+- `npm test` runs on every push and PR via `.github/workflows/test.yml`.
+
 ## [0.4.3] — 2026-05-23
 
 > Patch release: security + correctness fixes from a four-round code audit, plus the step-008 cross-client init feature that was already committed (`9d75906`). v0.5.0 reserved for step-009 (MCP Prompts) — see ROADMAP.

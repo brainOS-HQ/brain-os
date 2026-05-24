@@ -9,21 +9,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 interface CommandSpec {
   template: string;       // file in templates/commands/
-  flatRel: string;        // path relative to .claude/commands/ in flat mode
-  nsRel: string | null;   // path relative to .claude/commands/ in namespaced mode (null for top-level)
-  flatName: string;       // display name in flat mode
-  nsName: string | null;  // display name in namespaced mode
+  rel: string;            // path relative to .claude/commands/
+  name: string;           // display name (e.g. "/brain:focus")
 }
 
 const COMMANDS: CommandSpec[] = [
-  { template: "brain.md",    flatRel: "brain.md",    nsRel: null,                flatName: "/brain",    nsName: null },
-  { template: "focus.md",    flatRel: "focus.md",    nsRel: "brain/focus.md",    flatName: "/focus",    nsName: "/brain:focus" },
-  { template: "decide.md",   flatRel: "decide.md",   nsRel: "brain/decide.md",   flatName: "/decide",   nsName: "/brain:decide" },
-  { template: "patterns.md", flatRel: "patterns.md", nsRel: "brain/patterns.md", flatName: "/patterns", nsName: "/brain:patterns" },
-  { template: "retro.md",    flatRel: "retro.md",    nsRel: "brain/retro.md",    flatName: "/retro",    nsName: "/brain:retro" },
-  { template: "graph.md",    flatRel: "graph.md",    nsRel: "brain/graph.md",    flatName: "/graph",    nsName: "/brain:graph" },
-  { template: "strategy.md", flatRel: "strategy.md", nsRel: "brain/strategy.md", flatName: "/strategy", nsName: "/brain:strategy" },
-  { template: "wrap.md",     flatRel: "wrap.md",     nsRel: "brain/wrap.md",     flatName: "/wrap",     nsName: "/brain:wrap" },
+  { template: "brain.md",    rel: "brain.md",            name: "/brain" },
+  { template: "focus.md",    rel: "brain/focus.md",      name: "/brain:focus" },
+  { template: "decide.md",   rel: "brain/decide.md",     name: "/brain:decide" },
+  { template: "patterns.md", rel: "brain/patterns.md",   name: "/brain:patterns" },
+  { template: "retro.md",    rel: "brain/retro.md",      name: "/brain:retro" },
+  { template: "graph.md",    rel: "brain/graph.md",      name: "/brain:graph" },
+  { template: "strategy.md", rel: "brain/strategy.md",   name: "/brain:strategy" },
+  { template: "wrap.md",     rel: "brain/wrap.md",       name: "/brain:wrap" },
 ];
 
 const TEMPLATE_MARKER = "# Brain OS";
@@ -70,16 +68,10 @@ async function installCommands(targetDir: string): Promise<InstallResult> {
     result.installed.push(displayName);
   };
 
-  // Install both canonical (brain:*) and bare alias forms for every command.
-  // Re-running init repairs any missing form without disturbing the existing one.
   for (const cmd of COMMANDS) {
     const srcPath = join(templatesRoot, cmd.template);
     if (!existsSync(srcPath)) continue;
-
-    if (cmd.nsRel && cmd.nsName) {
-      await tryInstall(srcPath, cmd.nsRel, cmd.nsName);
-    }
-    await tryInstall(srcPath, cmd.flatRel, cmd.flatName);
+    await tryInstall(srcPath, cmd.rel, cmd.name);
   }
 
   return result;
@@ -306,8 +298,6 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     if (install.installed.length > 0) {
       output.push(`Slash commands installed (${install.installed.length}):`);
       for (const name of install.installed) output.push(`    ${name}`);
-      output.push("");
-      output.push("  /brain:* are canonical. Bare /forms are aliases for power users.");
     }
     if (install.preserved.length > 0) {
       output.push("");
