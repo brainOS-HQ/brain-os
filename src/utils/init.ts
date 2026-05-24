@@ -381,6 +381,11 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
   output.push("  focus_get, pattern_detect, semantic_recall, audit_log,");
   output.push("  memory_check, memory_commit, plan_set/add/advance/read");
   output.push("");
+  output.push("Thanks for installing Brain OS!");
+  output.push("If it's useful to you, a GitHub star would mean a lot:");
+  output.push("  https://github.com/brainOS-HQ/brain-os");
+  output.push("Feedback, ideas, or bugs → https://github.com/brainOS-HQ/brain-os/issues");
+  output.push("");
 
   return output.join("\n");
 }
