@@ -4,8 +4,23 @@ import { readFile } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
+import { homedir } from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Check if Brain OS slash commands are already installed as skill files.
+// If they exist, MCP Prompts would create duplicates in the command picker.
+// Prompts are the fallback for users who connected the MCP server without
+// running `brain-os init` — not a duplicate layer for users who did.
+function commandsAlreadyInstalled(): boolean {
+  const indicators = [
+    join(homedir(), ".claude", "commands", "brain", "focus.md"),
+    join(homedir(), ".claude", "commands", "brain.md"),
+    join(process.cwd(), ".claude", "commands", "brain", "focus.md"),
+    join(process.cwd(), ".claude", "commands", "brain.md"),
+  ];
+  return indicators.some((p) => existsSync(p));
+}
 
 async function loadTemplate(name: string): Promise<string> {
   const path = join(__dirname, "..", "templates", "commands", `${name}.md`);
@@ -80,6 +95,12 @@ const PROMPTS: PromptSpec[] = [
 ];
 
 export function registerPrompts(server: McpServer): void {
+  if (commandsAlreadyInstalled()) {
+    // Skill files exist — prompts would duplicate the command picker.
+    // Users who ran `brain-os init` already have the full workflow files.
+    return;
+  }
+
   for (const spec of PROMPTS) {
     server.prompt(
       spec.name,
