@@ -35,78 +35,81 @@ Skip the staleness alert for entities with `mode = parked` or `archived`.
 
 ## Output : single entity
 
+Write in PLAIN LANGUAGE. The structured block is for scanability; follow it with a plain-language summary.
+
 ```
 ==============================
   [ENTITY NAME]
 ==============================
-  STATUS      [from entity_read]
-  MODE        [active/parked/incubating/archived]
-  MOMENTUM    [high/medium/low/stalled]
-  BLOCKED     [blocker, or none]
-  NEXT        [next_move]
-  UPDATED     [last_updated] : [Fresh/Aging/Stale/Dormant]
+  STATUS      [what's been done recently, in plain words]
+  MODE        [active / parked / incubating / archived]
+  MOMENTUM    [high / medium / low / stalled]
+  BLOCKED     [what's in the way, or "none"]
+  NEXT        [the one thing to do next]
+  UPDATED     [date] — [Fresh / Aging / Stale / Dormant]
   ----------------------------
-  ACTIVE PLAN [step from plan_read]
-  RELATED     [related_entities]
-  DECISIONS   [active decisions, or none]
+  PLAN        [current step] ([done/total] done)
   ----------------------------
-  OPEN        [open_questions, or none]
+  FOCUS NOW   [one sentence: what to do and what NOT to do yet]
 ==============================
 ```
+
+After the block, add 2-3 sentences of plain-language context:
+- What was the last meaningful progress?
+- What decision is this building on?
+- What's the risk if this sits?
 
 ## Output : master overview
 
 ```
 ============================================================
-  BRAIN OS : OVERVIEW
+  YOUR PROJECTS
 ============================================================
 
   ACTIVE
-  --------------------------------------------------------
-  ENTITY            MOMENTUM   UPDATED    FRESHNESS  NEXT
-  [name]            [m]        [date]     [f]        [next]
+  [name]     [momentum]   [how fresh]   [what's next, in plain words]
+  [name]     ...
 
   INCUBATING
-  --------------------------------------------------------
-  [name]            ...
+  [name]     [why it's incubating]
 
-  PARKED / ARCHIVED
-  --------------------------------------------------------
-  [names, comma-separated]
+  PARKED
+  [names, one line]
 
 ============================================================
-  ALERTS
+  NEEDS ATTENTION
 ============================================================
-  STALE:    [active entities not updated in 22+ days]
-  BLOCKED:  [entities with active blockers]
-  FAKE:     [active entities with stalled momentum]
+  [stale active projects — "X hasn't been touched in N days"]
+  [blocked projects — "X is stuck on Y"]
+  [fake-active — "X is marked active but nothing is moving"]
+
 ============================================================
   RECENT DECISIONS
 ============================================================
-  [last 3 from entity_read.recent_decisions, one line each]
+  [last 3, one line each in plain language — not decision IDs]
+
 ============================================================
-  ACTIVE PATTERNS
+  WHAT YOU CAN DO
 ============================================================
-  [from pattern_detect, one line each]
-============================================================
-  SUGGESTED NEXT
-============================================================
-  -> /focus      What should I work on today?
-  -> /patterns   What patterns are emerging?
-  -> /retro      What happened this week?
-  -> /strategy   Think through a decision
-  -> /decide     Log a decision
+  /focus      What should I work on today?
+  /patterns   What patterns are emerging?
+  /retro      What happened this week?
+  /strategy   Think through a decision
+  /decide     Log a decision
 ============================================================
 ```
 
 ## After output
 
-Ask: "Want to work on something, or run `/focus`?"
+Ask: "Want to dig into one of these, or run `/focus`?"
 
 ## Rules
 
-- Brain OS MCP tools only. Never read code, `CLAUDE.md`, or pulse files when the MCP server is available.
-- Never speculate. If a field is missing, show `-`.
-- Staleness is today minus `last_updated`.
+- MCP tools are used internally but never named in user-facing output. No "Calling entity_read..." in the response.
+- Never speculate. If a field is missing, show "—".
 - Do not nag about parked entities. Parked is intentional.
-- Name the MCP tools you call in user-facing text (e.g. "Calling `entity_read`..."). Reinforces tool habit per protocol.
+- Write like you're briefing a busy founder, not filing a system report.
+- No JSON in the output. No field names like entity_id or staleness.level. No scores.
+- The "FOCUS NOW" line in single-entity view is the most important line — make it a clear, actionable judgment call.
+- When the user asks about a specific project: that project gets the full report first. Any alerts, staleness, decisions, or patterns from OTHER projects go under "Elsewhere in your workspace worth checking:" at the very end. If nothing from other projects is relevant, omit that section entirely.
+- When no specific project is named: show everything without separation.

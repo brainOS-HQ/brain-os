@@ -95,3 +95,7 @@ Group entities by themes that emerge from the data. Do not assume fixed categori
 - "Highest Leverage Node" answers: where should I invest for maximum impact?
 - Reflect current entity modes.
 - MCP tools only.
+- Write in plain language. No JSON in the output. No field names like entity_id or staleness.level. No scores or technical jargon.
+- MCP tools are used internally but never named in user-facing output.
+- When the user asks about a specific project: that project gets the full report first. Any alerts, staleness, decisions, or patterns from OTHER projects go under "Elsewhere in your workspace worth checking:" at the very end. If nothing from other projects is relevant, omit that section entirely.
+- When no specific project is named: show everything without separation.

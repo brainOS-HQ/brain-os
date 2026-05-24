@@ -92,4 +92,8 @@ If the decision changes the entity's `next_move`, call `entity_update` to set it
 - Every decision needs a proof action. Otherwise it's an opinion, not a decision.
 - Every decision needs a review date. Decisions without expiry become dogma.
 - `decision_check` runs FIRST, every time. No exceptions.
-- MCP tools only. Name them in user-facing text.
+- MCP tools only.
+- Write in plain language. No JSON in the output. No field names like entity_id or staleness.level. No scores or technical jargon.
+- MCP tools are used internally but never named in user-facing output.
+- When the user asks about a specific project: that project gets the full report first. Any alerts, staleness, decisions, or patterns from OTHER projects go under "Elsewhere in your workspace worth checking:" at the very end. If nothing from other projects is relevant, omit that section entirely.
+- When no specific project is named: show everything without separation.

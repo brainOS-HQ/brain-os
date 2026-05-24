@@ -1,4 +1,5 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerPrompts } from "./prompts.js";
 import { z } from "zod";
 import { readEntity, readAllEntities } from "./tools/entity-read.js";
 import { updateEntity } from "./tools/entity-update.js";
@@ -284,4 +285,10 @@ export function registerTools(server: McpServer) {
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
+
+  // ──────────────────────────────────────────────
+  // PROMPTS — guided workflows via prompts/list
+  // ──────────────────────────────────────────────
+
+  registerPrompts(server);
 }

@@ -10,7 +10,7 @@ Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`.
 
 ## Input
 
-Arguments: `$ARGUMENTS` (optional : "weekly" or "monthly", defaults to weekly)
+Arguments: `$ARGUMENTS` (optional : entity/project name, "weekly" or "monthly", or both e.g. `brain-os weekly`). Defaults to weekly across all entities if no argument.
 
 ## Primary tool sequence
 
@@ -96,3 +96,7 @@ For each yes, call the appropriate MCP tool (`entity_update`, `pattern_detect` t
 - Keep "Hidden pattern" to ONE observation. The most important one.
 - If this is the first retro, say so: "First retro. No comparison data yet. Establishing baseline."
 - MCP tools only.
+- Write in plain language. No JSON in the output. No field names like entity_id or staleness.level. No scores or technical jargon.
+- MCP tools are used internally but never named in user-facing output.
+- When the user asks about a specific project: that project gets the full report first. Any alerts, staleness, decisions, or patterns from OTHER projects go under "Elsewhere in your workspace worth checking:" at the very end. If nothing from other projects is relevant, omit that section entirely.
+- When no specific project is named: show everything without separation.

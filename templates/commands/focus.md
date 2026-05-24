@@ -10,10 +10,17 @@ Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. It governs tool rou
 
 ## Input
 
-Arguments: `$ARGUMENTS` (optional constraint like "only 2 hours" or "low energy today")
+Arguments: `$ARGUMENTS` (can be a project name like "brain os" or "ghost", OR a constraint like "only 2 hours" or "low energy today", OR both like "ghost, low energy")
 
 ## Primary tool sequence
 
+**If the user names a specific project:**
+1. `mcp__brain-os__entity_read(entity_id)` : load that project's full state
+2. `mcp__brain-os__plan_read(entity_id)` : get active step and progress
+3. `mcp__brain-os__decision_check(entity.next_move, entity_id)` : verify no active decision contradicts the next move
+4. Skip `focus_get` — the user already told you what to focus on. Give them the deep view of that one project.
+
+**If no specific project is named (general focus):**
 1. `mcp__brain-os__focus_get(constraints=$ARGUMENTS)` : prioritized recommendations across all entities
 2. `mcp__brain-os__entity_read(top_pick.entity_id)` : detail on the #1 priority
 3. `mcp__brain-os__decision_check(top_pick.next_move, top_pick.entity_id)` : verify no active decision contradicts the recommendation
@@ -27,48 +34,43 @@ The `focus_get` tool returns: prioritized entities with scores and reasons, `do_
 
 ## Output
 
+Write in PLAIN LANGUAGE. No JSON. No field names like entity_id or staleness.level. The user should understand what to do next without any technical knowledge.
+
+Use this pattern (adapt to content, don't copy robotically):
+
 ```
-========================================
-  TODAY'S FOCUS
-========================================
+Your top priority right now is [PROJECT NAME].
 
-## 1. [Entity name] : [one-line action]
+Do this next:
+1. [One concrete action — not "think about X"]
+2. [Optional second step if obvious]
 
-  Why this matters:
-  [2 to 3 sentences : strategic reason, not "it's overdue"]
+Why this matters:
+[2 to 3 sentences in plain language. Strategic reason, consequence of not doing it, or what it unlocks. Not "it's overdue."]
 
-  Evidence:
-  - [from focus_get.evidence or entity_read]
-  - [from focus_get.evidence or entity_read]
+What not to do yet:
+- [Shiny distraction to resist]
+- [Other project that can wait]
+- [Reorganization or new idea]
 
-  Next move:
-  [one concrete action, not "think about X"]
+[If there's a second priority, add it briefly:]
 
-  Timebox:
-  [60 to 120 minutes]
+After that, consider [SECOND PROJECT]:
+[One sentence on what and why]
 
-## 2. [optional second priority]
-  ...
+---
+[If staleness alerts exist for the FOCUSED project:]
+Heads up: this project hasn't been touched in [N] days. Either ship something or park it.
 
-========================================
-  DO NOT DO TODAY
-========================================
-  - [from focus_get.do_not_do]
-  - [shiny new idea to resist]
-  - [reorganization that can wait]
+[If unreviewed decisions exist for the FOCUSED project:]
+Decision review due: "[decision text]" — reaffirm, update, or archive it.
 
-========================================
-  STALENESS ALERT
-========================================
-  [from focus_get.staleness_alerts]
-  [if none, omit this section]
-
-========================================
-  UNREVIEWED DECISIONS
-========================================
-  [from focus_get.unreviewed_decisions]
-  [if none, omit this section]
-========================================
+---
+[ALWAYS AT THE END. If staleness alerts or unreviewed decisions exist for OTHER projects:]
+Elsewhere in your workspace worth checking:
+- [PROJECT] hasn't been touched in [N] days — ship something or park it.
+- [PROJECT] has a decision review due: "[decision text]"
+[If nothing from other projects, omit this section entirely.]
 ```
 
 ## After output
@@ -79,9 +81,11 @@ Ask: "Ready to start?"
 
 - Maximum 3 priorities. Usually 1 is best.
 - Every priority needs a concrete next action.
-- "Do not do today" is mandatory. The problem is too many realities, not too few.
+- "What not to do" is mandatory. The problem is too many realities, not too few.
 - If nothing is urgent, say so. "Low-urgency day, pick what has energy" is valid.
-- If a proof action from a decision hasn't shipped, surface it (focus_get returns these).
+- If a proof action from a decision hasn't shipped, surface it.
 - If an active entity is stale but has no blocker, call it fake-active. Recommend: ship or park.
 - Never guilt-trip about parked entities.
-- MCP tools only. Name them in user-facing text.
+- Write like you're talking to a smart friend, not filing a report.
+- No JSON in the output. No field names. No scores. The engine does the scoring; the user sees the judgment.
+- MCP tools are used internally but never named in user-facing output.

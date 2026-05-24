@@ -10,7 +10,7 @@ Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. Tool routing is non
 
 ## Input
 
-Arguments: `$ARGUMENTS` (optional : "weekly" for recent patterns, "deep" for full analysis, or a specific theme)
+Arguments: `$ARGUMENTS` (optional : entity/project name, "weekly" for recent patterns, "deep" for full analysis, or a specific theme). If a project name is given, focus on that project's patterns first.
 
 ## Primary tool sequence
 
@@ -104,4 +104,8 @@ Ask the user which patterns to save. For confirmed ones, the tool persists them 
 - If no new patterns, say so: "No new patterns. Current ones still hold."
 - If a logged pattern looks resolved or false, recommend removing it.
 - Maximum 5 patterns per report. Prioritize the most impactful.
-- MCP tools only. Name them in user-facing text.
+- MCP tools only.
+- Write in plain language. No JSON in the output. No field names like entity_id or staleness.level. No scores or technical jargon.
+- MCP tools are used internally but never named in user-facing output.
+- When the user asks about a specific project: that project gets the full report first. Any alerts, staleness, decisions, or patterns from OTHER projects go under "Elsewhere in your workspace worth checking:" at the very end. If nothing from other projects is relevant, omit that section entirely.
+- When no specific project is named: show everything without separation.
