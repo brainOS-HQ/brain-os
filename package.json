@@ -1,7 +1,7 @@
 {
   "name": "brain-os",
-  "version": "0.5.0",
-  "description": "Operational memory for AI agents. Persistent entity state, decisions, patterns, and priorities across sessions.",
+  "version": "0.5.1",
+  "description": "MCP server for operational state across AI agents. Decisions, plans, blockers, and project state that survive across sessions.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -24,9 +24,9 @@
   },
   "keywords": [
     "mcp",
-    "ai-memory",
+    "ai-state",
     "ai-agents",
-    "operational-memory",
+    "operational-state",
     "model-context-protocol"
   ],
   "author": "Tasha Amanda",

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS - Operational memory for AI agents" width="100%" />
+  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS - AI remembers conversations but forgets project state" width="100%" />
 </p>
 
 <p align="center">
@@ -13,11 +13,13 @@
 
 **[brainos-hq.com](https://brainos-hq.com)**
 
-Persistent operational memory for AI agents. Decisions, priorities, and project state that survive across sessions.
+Your AI remembers conversations. It still forgets project state.
+
+Brain OS gives agents operational state: decisions, plans, blockers, and priorities that survive across sessions.
 
 ## What is this?
 
-AI agents are powerful inside a session but start fresh every time. Brain OS gives them operational memory — not conversation logs, but structured state:
+AI agents are powerful inside a session, but long-running work has more state than any one chat: what you decided, what's blocked, what's active, and what should not be reopened. Brain OS gives agents operational state, not conversation logs:
 
 - **Entities** — track projects, deals, initiatives with status, momentum, blockers, and next moves
 - **Decisions** — log what was decided, why, what alternatives were rejected, and when to revisit
@@ -25,7 +27,7 @@ AI agents are powerful inside a session but start fresh every time. Brain OS giv
 - **Focus** — prioritize what to work on based on urgency, momentum, leverage, and staleness
 - **Semantic recall** — search memory by meaning, not just ID
 
-Brain OS is an [MCP server](https://modelcontextprotocol.io) that works with any MCP-compatible client — Claude Code, Cursor, or any agent that speaks the protocol.
+Brain OS is an [MCP server](https://modelcontextprotocol.io) that works with any MCP-compatible client: Claude Code, Cursor, Zed, GitHub Copilot, OpenAI Codex, Windsurf, or any agent that speaks the protocol.
 
 ## What it looks like in use
 

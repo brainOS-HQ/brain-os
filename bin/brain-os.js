@@ -18,7 +18,7 @@ if (command === "init") {
   await import("../dist/index.js");
 } else {
   console.log(`
-Brain OS : Operational memory for AI agents
+Brain OS : Operational state for AI agents
 
 Usage:
   brain-os init [path] [flags]   Initialize .brain/ and install agent instructions + slash commands

@@ -12,11 +12,12 @@ Each post is ≤280 chars. Image / gif placeholders are suggestions, not require
 
 ### 1. Hook
 ```
-Most AI tools remember what you said.
+Your AI remembers conversations.
+It still forgets project state.
 
-Brain OS remembers what is true about your work.
+Brain OS gives agents operational state: decisions, plans, blockers, and priorities across sessions.
 
-Open-source MCP server. Local-first. No cloud. Works with Claude Code, Cursor, Zed.
+Open-source MCP server. Local-first. No cloud.
 
 → npx brain-os init
 ```

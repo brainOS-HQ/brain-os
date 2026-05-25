@@ -8,4 +8,4 @@ See [`AGENTS.md`](./AGENTS.md). It is the canonical, cross-tool instruction file
 
 ## Project memory
 
-Brain OS is the project's operational memory. Run `/brain` to scan state, `/focus` for priorities, `/wrap` to end a session. State lives in `.brain/`, not in this file.
+Brain OS is the project's operational state. Run `/brain` to scan state, `/focus` for priorities, `/wrap` to end a session. State lives in `.brain/`, not in this file.

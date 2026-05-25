@@ -2,13 +2,13 @@
 
 ## What This Is
 
-A local-first MCP server that gives AI agents persistent operational memory.
+A local-first MCP server that gives AI agents persistent operational state.
 
-Not conversation memory. Operational memory: entity state, decisions, blockers, patterns, relationships, and priorities that persist across sessions and inform judgment.
+Not conversation memory. Operational state: entity state, decisions, blockers, patterns, relationships, and priorities that persist across sessions and inform judgment.
 
 ## Positioning
 
-> AI agents are powerful inside a session but unreliable across time. Brain OS gives them operational memory.
+> AI agents are powerful inside a session but unreliable across time. Brain OS gives them operational state.
 
 ## Architecture
 
