@@ -38,8 +38,8 @@
     "openai": "^6.35.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "fast-uri": ">=3.1.2",
