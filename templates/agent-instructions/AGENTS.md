@@ -53,7 +53,30 @@ At the start of a conversation, silently call `entity_read()` to load current st
 - If a decision has an upcoming review date, surface it: "You said you'd revisit the pricing model this week."
 - If nothing is urgent, say nothing. Start with the user's request.
 
-If `.brain/` is empty (no entities yet), offer to help: "No projects tracked yet. Want to tell me what you're working on? I'll remember it for next time."
+### First run (no entities exist)
+
+If `entity_read()` returns no entities, this is a new user. Do not show tool lists, schemas, or setup instructions. Start a short conversation instead.
+
+1. **Ask what they're working on.** One question: "No projects tracked yet — what are you working on right now?" Let them answer naturally. They might mention one project or several.
+
+2. **Extract from their answer:**
+   - A short project name (slug it yourself, e.g. "my saas app" → `my-saas-app`)
+   - Current status — are they building, launching, stuck, exploring?
+   - A blocker, if they mention one
+   - What they plan to do next
+   - Any decision or commitment they state ("I decided to use Stripe", "we're not doing mobile")
+
+3. **Confirm before saving.** Summarize back in 2-3 sentences: "Got it — you're building [name], currently [status]. Next up: [next move]. [Blocker if any]." Ask: "Sound right?"
+
+4. **Create the entity.** Call `entity_update` with the extracted fields. If they mentioned multiple projects, create one entity each — but keep it to what they actually said, do not invent fields.
+
+5. **Log any decision.** If they stated a commitment or choice, call `decision_check` first, then `decision_log`. Confirm: "Noted — I'll remember that you decided [decision]."
+
+6. **Show what matters now.** Call `focus_get` and show the result. This proves the loop: they talked, the system listened, and now it can tell them what to focus on.
+
+7. **Close with:** "You're set up. Next time I'll remember where you left off."
+
+Keep the whole exchange to 2-3 messages. Do not over-ask. If they give a short answer, work with what you have — a single entity with a name and next move is enough to start.
 
 ---
 
