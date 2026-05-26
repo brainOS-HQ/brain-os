@@ -29,22 +29,47 @@ Look back at this conversation. Identify which entities were touched : anywhere 
 
 If an entity name was given as argument, wrap that one only.
 
-## Step 2: For each touched entity, ask
+## Step 2: Ask what to remember
 
-One message per entity. Propose 2 to 3 candidate answers drawn from the conversation for open-ended fields (decision, next move, pattern). Structured fields with enums (status y/n, momentum up/same/down/stalled, mode active/parked/incubating/archived) stay direct.
+Show the user a short memory checklist in everyday language. Ask one yes/no question per thing worth saving. Do not ask about fields, entities, momentum, mode, plans, commits, logs, or schemas.
+
+Group by project if more than one project changed, but keep each item as a plain sentence the user could say to a coworker.
+
+Use this shape:
 
 ```
-Wrapping [ENTITY NAME]:
+Here is what seems worth remembering:
 
-1. Status changed? (y/n, if yes: a / b / c / other)
-2. Decision made? (a / b / c / none)
-3. Next move changed? (a / b / c / other)
-4. Momentum: up / same / down / stalled?
-5. Mode: stay active / park / incubate / archive?
-6. Pattern noticed? (a / b / none)
+[Project name]
+- You decided to drop the auth rewrite. Remember that?
+- You're blocked on the API key. Flag that for next time?
+- You made progress on the landing page. Save where you left off?
+- Next time, start by testing the checkout flow. Keep that as the next step?
+
+Reply yes/no for each one, or edit the wording.
 ```
 
-Yes/no or pick-one where possible. One message per entity, max.
+Good question patterns:
+
+- "You decided [decision]. Remember that?"
+- "You're blocked on [blocker]. Flag that for next time?"
+- "You made progress on [work]. Save where you left off?"
+- "Next time, start with [specific action]. Keep that as the next step?"
+- "[Project] is paused for now. Remember that?"
+- "This keeps coming up: [pattern]. Save that as a pattern?"
+
+If there are more than 5 items, show only the highest-value memories first. A wrap should feel like checking off notes, not filling out a form.
+
+Internally map confirmed items like this:
+
+- decision remembered -> `decision_check`, then `decision_log`, and usually `last_decision`
+- blocker flagged -> `blocked`
+- progress saved -> `evidence_of_progress` and, if useful, `status`
+- next step kept -> `next_move` or plan step update
+- pause/archive/incubate remembered -> `mode` and `mode_reason`
+- recurring behavior saved -> pattern note or session pattern
+
+If the user says no to an item, do not write it.
 
 ## Step 3: Update the entity
 
@@ -64,7 +89,7 @@ For each entity with changes, call `entity_update` with the relevant fields:
 
 ## Step 4: Capture decisions
 
-If a strategic decision was made, ask: "Should this go in the decision log?"
+If a strategic decision was made and it was not already confirmed in Step 2, ask: "You decided [decision]. Remember that for next time?"
 
 If yes:
 - Call `decision_check` to surface any conflicts with existing active decisions
@@ -77,7 +102,7 @@ If a plan step shipped this session, call `plan_update` to mark it complete and 
 
 ## Step 6: Log patterns
 
-If a recurring theme, blocker, or avoidance behavior was noticed, ask: "Should this go in the pattern log?"
+If a recurring theme, blocker, or avoidance behavior was noticed and it was not already confirmed in Step 2, ask: "This keeps coming up: [pattern]. Save that as a pattern?"
 
 If yes, call `pattern_detect` to confirm it (or update existing).
 
@@ -87,14 +112,12 @@ If yes, call `pattern_detect` to confirm it (or update existing).
 ==============================
   SESSION WRAPPED
 ==============================
-  [ENTITY]   [what changed]   [momentum]
-  [ENTITY]   [what changed]   [momentum]
+  Remembered:
+  - [Plain-language thing saved]
+  - [Plain-language thing saved]
   ----------------------------
-  Unchanged: [entities not touched]
-  ----------------------------
-  Decisions logged: [count, or none]
-  Patterns logged:  [count, or none]
-  Plan steps advanced: [count, or none]
+  Skipped:
+  - [Plain-language thing the user declined, or "Nothing"]
 ==============================
 ```
 

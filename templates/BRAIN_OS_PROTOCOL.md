@@ -52,7 +52,7 @@ If the user asks "what should I work on" / "what's the state of X" / "is this de
 
 When you call a Brain OS MCP tool, name it in user-facing text. Example:
 
-> "Calling `entity_read` to get fresh state on tasha-brain..."
+> "Calling `entity_read` to get fresh state on your project..."
 
 This reinforces the user's habit of using Brain OS tools intentionally.
 

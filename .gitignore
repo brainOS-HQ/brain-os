@@ -6,6 +6,15 @@ dist/
 .env.*
 !.env.example
 YC_APPLICATION_S26.md
+STRATEGY.md
+codebase-map.md
+drafts/
+.codex/
+.vscode/
+.claude/
+.cursor/
+.zed/
+.windsurfrules
 
 # Logs
 *.log

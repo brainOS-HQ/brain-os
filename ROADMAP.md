@@ -1,92 +1,113 @@
-# Brain OS — Product Roadmap
+# Brain OS — Roadmap
 
-Position: **Operational state layer for AI work** (not chat memory, not embeddings DB)
+Brain OS is the **operational truth layer for agentic work**: persistent project state, decisions, plans, focus, and auditability for AI agents working across time and tools.
 
-Strategy: Don't build "more memory." Build trust, enforcement, and continuity.
+This roadmap is the public build plan. The longer product thesis lives in `STRATEGY.md`.
 
-## Why Brain OS is different
+## Shipped
 
-These define the lane. Any one gap alone is copyable, but each is a natural extension of the existing foundation — so a competitor would have to rebuild architecture to follow.
+- [x] **Local-first `.brain/` state** — entity, decision, pattern, session, audit, and embedding stores live in the project.
+- [x] **MCP server** — works with MCP-compatible clients such as Claude Code, Cursor, and Zed.
+- [x] **Entity state** — track projects/initiatives with status, momentum, blockers, next moves, related entities, and open questions.
+- [x] **Decision log** — record what was decided, why, rejected alternatives, proof action, review date, and supersession.
+- [x] **Decision check** — returns clear/caution/conflict before an agent acts against prior decisions.
+- [x] **Focus engine** — ranks what to work on by urgency, momentum, leverage, and staleness.
+- [x] **Plan primitive** — ordered work steps with evidence/reason requirements and next-step promotion.
+- [x] **Pattern detection** — surfaces recurring blockers, stale work, avoidance signals, and theme convergence.
+- [x] **Semantic recall** — local/OpenAI embedding search over entities, decisions, patterns, and sessions.
+- [x] **Audit log** — append-only record of state mutations.
+- [x] **Smoke tests + CI** — regression coverage for core tools and safety helpers.
 
-- [x] **1. Cross-tool coherence** — MCP-native + local `.brain/` means any MCP client (Claude Code, Cursor, Zed, Windsurf, VS Code) reads the same source of truth. **Shipped.** The big AI vendors won't build it (lock-in incentives), Supermemory's fact-extraction model can't share structured decisions, GSD is locked to Claude Code by design.
-- [x] **2. Anti-sycophancy / agent pushback** — `decision_check` returns conflict/caution/clear with the original reasoning surfaced. Stops agents from agreeing with contradictions you didn't notice. **Shipped.** The inverse of every other AI tool, which tries to be more agreeable.
-- [ ] **3. Decision aging** — Decisions have timestamps; need `revisit_after` field + stale-decision surfacing. **Partial** — see Priority 2: Revisit triggers. Compounds with use: the longer you run Brain OS, the more valuable this becomes.
-- [ ] **4. Drift detection** — Entity has `vision`, `do_not_build`, `out_of_scope`; need `drift_check` tool that compares current `next_move` against original vision. **Partial** — primitives exist, comparison tool pending.
-- [ ] **5. Decision provenance for code** — Link decisions to commit hashes / file paths so "why is this function structured this way?" surfaces the original decision with reasoning + rejected alternatives. **Roadmap.**
-- [ ] **6. Federated patterns** — Opt-in community decision support: "other Brain OS users facing this decision typically chose X for these reasons." Local-first architecture makes federation safe and adjacent, not contradictory. **Phase 2** (~12-18mo, see below).
+## Now — Launch Readiness
 
-## Priority 1 — Foundation (build now)
+Goal: a new user can install Brain OS, create useful state, and see one agent respect that state in another client within 10 minutes.
 
-- [x] Entity schema with status/momentum/blockers/next_move
-- [x] Decision log with alternatives, reasons, review dates, supersession
-- [x] Focus scoring (urgency/momentum/leverage/staleness)
-- [x] Memory check (signal classification)
-- [x] Pattern detection
-- [x] Semantic recall (local + OpenAI embeddings)
-- [x] Auto-loaded status resource
-- [x] **Audit log** — append-only write history (who changed what, when, from which session)
-- [x] **Plan primitive** — ordered work steps on entities, auto-promotes next_move, enforces evidence/reason
-- [ ] **Entity version history** — save previous state before each update, enable rollback
+- [ ] **One-command install path** — Smithery/Cursor/Zed-friendly setup so users do not hand-edit config unless needed.
+- [ ] **Workspace discovery** — MCP server reliably finds the correct `.brain/` from each client without hardcoded `BRAIN_DIR`.
+- [ ] **Guided init flow** — first run captures one project, one active commitment, one blocker, and one next move.
+- [ ] **First-win demo flow** — capture decision → ask in another client → agent respects prior state.
+- [ ] **Default workflow** — capture → decide → next step → daily/weekly recap, with user-facing names instead of tool jargon.
+- [ ] **Starter templates** — solo builder, coding project, launch/marketing project, team workspace.
 
-## Priority 2 — Decision Continuity (the killer feature)
+## Next — Decision Continuity
 
-- [x] **`decision_check` tool** — agent calls before acting, returns "clear" / "caution" / "conflict". v0.4.1: directional embeddings (chosen vs rejected facets) — keyword heuristics demote to caution unless semantic confirms against the rejected facet; never returns `conflict` without `BRAIN_EMBEDDINGS`. Eliminates false STOPs from coincidental word overlap.
-- [x] **Decision Lock enforcement** — conflicts block agent from proceeding without user confirmation
-- [x] **`decision_log` supersession hygiene** — v0.4.1: removed type-collision auto-deduction; requires explicit `supersedes: string[]` parameter. Each target must belong to the same `entity_id`. Fixes the cascade-supersession bug seen on parallel batches.
-- [x] **`decision_refresh` tool** — bump `review_date`, append evidence, change status. Metadata-only mutation; preserves audit-log fidelity (no more direct JSON edits). v0.4.1: clears dangling `superseded_by` when status transitions away from `superseded`.
-- [x] **`plan_advance` ordering integrity** — v0.4.1: skips promotion when an active step already exists, so completing steps out of order can no longer leave two `active` steps simultaneously.
-- [x] **Smoke test suite** — v0.4.1: `tests/smoke.mjs` exercises 4 tools as regression coverage for v0.4.1 fixes. v0.4.3 expanded to 9 tools / 24 tests by adding `entity_update`, `semantic_recall`, `focus_get`, `audit_log`, `plan_set/advance`, the `assertSafeId` path-traversal guard, and the `calculateStaleness` / `today()` helpers. Wired to `npm test` + CI. `pattern_detect`, `memory_check/commit`, `plan_add/read`, and `brain://status` still uncovered — expanding next.
-- [ ] **Revisit triggers** — auto-flag decisions when their review_date passes or new evidence appears
+Goal: agents reliably use prior decisions without noisy false stops.
 
-## Priority 3 — Schema Expansion
+- [ ] **Revisit triggers** — flag decisions when review dates pass or new evidence appears.
+- [ ] **Decision provenance for code** — link decisions to commits/files so agents can explain why code is structured a certain way.
+- [ ] **Drift check** — compare proposed next moves against entity vision, scope, and explicit do-not-build constraints.
+- [ ] **Stale-state warnings** — require refresh/confirmation before acting on old state.
 
-- [ ] **Blocker as first-class object** — resolution tracking, who unblocked, when
-- [ ] **Owner field** on entities — who is responsible
-- [ ] **Assumption primitive** — things believed true that haven't been verified
-- [ ] **Risk primitive** — identified risks with likelihood/impact/mitigation
-- [ ] **Dependency tracking** — entity A blocks entity B (not just `related_entities`)
+Gate: `decision_check` catches real contradictions, stale decisions surface at the right time, and code-level decisions can be traced back to their reasoning.
 
-## Priority 4 — Memory Safety
+## Next — State Model Expansion
 
-- [ ] **Write validation** — reject suspicious instruction-like content being stored as memory
-- [ ] **Confidence scoring** — each memory write gets a confidence level
-- [ ] **Memory diff** — show what changed since last session in human-readable form
-- [ ] **Rollback** — revert entity/decision to a previous version from audit log
-- [ ] **Secret detection** — refuse to store API keys, tokens, passwords
+Goal: cover the common things that change action without becoming a generic notes database.
 
-## Priority 5 — Governance (team-ready)
+- [ ] **Entity version history** — save previous state before updates and enable rollback when audit/review UX needs it.
+- [ ] **Blocker objects** — resolution tracking, who unblocked, and when.
+- [ ] **Owner field** — who is responsible for an entity or plan.
+- [ ] **Assumption primitive** — things believed true but not yet verified.
+- [ ] **Risk primitive** — likelihood, impact, mitigation, and review date.
+- [ ] **Dependency tracking** — entity A blocks entity B, beyond loose related entities.
 
-- [ ] **Permission boundaries** — which agents can read/write which entities
-- [ ] **Memory review mode** — proposed writes that need human confirmation
-- [ ] **Export/delete** — full data portability
-- [ ] **Encrypted local storage** — at-rest encryption for `.brain/`
+## Next — Memory Safety and Governance
 
-## Phase 2 — Optional Cloud Sync (~12–18mo, after ~1k+ active local installs)
+Goal: agents can distinguish allowed actions, approval-required actions, stale-state actions, and forbidden actions before mutating state or causing external side effects.
 
-Cloud is opt-in, end-to-end encrypted, and only built once users explicitly ask for it. Local-first is the default today and remains the priority.
+- [ ] **Write validation** — reject suspicious instruction-like content stored as memory.
+- [ ] **Secret detection** — refuse to store API keys, tokens, passwords, or sensitive credentials.
+- [ ] **Memory diff** — show what changed since the last session.
+- [ ] **Rollback** — revert entity/decision state from audit history.
+- [ ] **Policy rules** — project/team constraints such as "do not change pricing without approval" or "do not work on parked projects."
+- [ ] **Approval gates** — proposed actions that require human confirmation.
+- [ ] **Permission boundaries** — which agents can read/write which entities.
+- [ ] **Export/delete** — full data portability.
+- [ ] **Encrypted local storage** — at-rest encryption for `.brain/`.
 
-- [ ] **Multi-device sync** — same `.brain/` state across laptop, desktop, mobile agents
-- [ ] **Encrypted sync protocol** — E2E encryption, server cannot read entity content
-- [ ] **Selective sync** — choose which projects sync, which stay local only
-- [ ] **Conflict resolution** — last-write-wins with audit-log-backed merge view
-- [ ] **Backup/recovery** — restore `.brain/` from any point in audit history
+## Later — Optional Sync and Visibility
 
-Trigger: build only when ~1k+ local installs are asking for sync. Until then, do not build.
+Cloud stays optional. Local-first remains the default.
 
-## Phase 3 — Enforcement at Team Scale (the moat)
+Trigger: build only when enough active local users explicitly ask for sync.
 
-Once cloud sync exists, enforcement becomes the enterprise wedge — auditable decision logs across multiple humans + agents working on shared state.
+- [ ] **Multi-device sync** — same `.brain/` state across laptop, desktop, and mobile agents.
+- [ ] **Encrypted sync protocol** — end-to-end encryption; server cannot read entity content.
+- [ ] **Selective sync** — choose which projects sync and which stay local only.
+- [ ] **Conflict resolution** — last-write-wins with audit-log-backed merge view.
+- [ ] **Backup/recovery** — restore `.brain/` from audit history.
+- [ ] **Control-room surface** — inspect, correct, approve, and review agent state without editing JSON.
 
-- [ ] **Multi-actor decision log** — track which human/agent made each decision
-- [ ] **Cross-agent decision_check** — conflicts surface across the team, not just one user
-- [ ] **Compliance-grade audit export** — SOC2/GDPR-ready logs
-- [ ] **Org-level policy enforcement** — "no decisions without owner field" etc.
+## Later — Multi-Agent Coordination
 
-## Not building yet
+Goal: multiple agents can work from the same truth without stepping on each other.
 
-- Dashboard UI (read-only `brain://status` resource is enough)
-- Slack/GitHub/Linear integrations
+- [ ] **Agent sessions** — track active/paused/completed agent work with client, entity, start time, and last seen time.
+- [ ] **Territories** — agents declare owned scopes such as files, features, projects, channels, or workflows.
+- [ ] **Territory check** — `territory_check(proposed_action, scope)` returns clear/caution/conflict before another agent edits the same area.
+- [ ] **Locks with TTL** — short-lived coordination locks that expire or require renewal.
+- [ ] **Handoffs** — transfer context, ownership, and next move from one agent to another.
+- [ ] **Activity feed** — human-readable view of who/what is working on which territory.
+
+## Later — Team Enforcement and Learning
+
+Goal: teams can audit, govern, and improve agentic work over time.
+
+- [ ] **Multi-actor decision log** — track which human/agent made each decision.
+- [ ] **Cross-agent decision check** — conflicts surface across the team, not just one user.
+- [ ] **Compliance-grade audit export** — SOC2/GDPR-ready logs.
+- [ ] **Org-level policy enforcement** — required owners, approvals, review gates, or evidence fields.
+- [ ] **Workflow failure patterns** — detect repeated skipped tests, stale launches, reopened decisions, or recurring stalls.
+- [ ] **Agent reliability signals** — track which agents/clients tend to miss checks, touch stale state, or require correction.
+- [ ] **Retro-to-policy loop** — convert repeated retros into suggested policies, gates, or checklist changes.
+- [ ] **Routing hints** — learn which tasks should go to which agent/tool based on past success.
+
+## Not Building Yet
+
 - Generic chatbot memory
+- Dashboard UI unrelated to sync, visibility, governance, or coordination
+- Slack/GitHub/Linear integrations before users demand them
 - Agent personality system
 - Knowledge graph visualization
-- Public SaaS UI / web dashboard
+- Public brain-region branding
+- AGI-infrastructure launch language

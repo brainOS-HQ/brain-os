@@ -14,8 +14,8 @@ Arguments: `$ARGUMENTS` (format: `<entity-name>` or `--resume`). If no argument,
 
 When the argument is `--resume` (or contains `--resume`):
 
-1. Detect the current project slug from the working directory (e.g. `brain-os`, `jinx`, etc.).
-2. Read the bookmark file at `~/.claude/projects/-Users-tashaamanda/memory/last-session-<slug>.md`. If no project-specific one exists, try `last-session.md`.
+1. Detect the current project slug from the working directory.
+2. Read the bookmark file at the user's Claude project memory path for `last-session-<slug>.md`. If no project-specific one exists, try `last-session.md`.
 3. Extract the `**Transcript:**` path from the bookmark.
 4. Read the JSONL transcript and extract the **last 15 user/assistant text exchanges** (skip tool_use and tool_result blocks).
 5. Present a "**Resuming from last session**" block showing:

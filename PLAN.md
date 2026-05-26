@@ -10,6 +10,15 @@ Not conversation memory. Operational state: entity state, decisions, blockers, p
 
 > AI agents are powerful inside a session but unreliable across time. Brain OS gives them operational state.
 
+### Product principle: memory first, commands second
+
+Brain OS should feel like memory, not a command system. A new user should never need to learn `wrap`, `focus`, or `brain` to get value.
+
+- **Natural-language capture.** "I'm blocked on API keys" becomes an `entity_update` internally. The agent confirms in plain language: "Noted — flagged as blocked on API keys."
+- **Commands are power-user shortcuts.** `/focus`, `/wrap`, `/brain` accelerate users who learn them, but are not required for basic value.
+- **First-run starts simple.** Ask what the user is working on — one project or several. Create entities from the conversation, then immediately run focus to prove the loop.
+- **Immediate payoff.** The first session should end with the user seeing a useful focus result, not a configuration screen.
+
 ## Architecture
 
 ```

@@ -52,7 +52,7 @@ If the task asks "what should I work on" / "what's the state of X" / "is this de
 
 In your final report to the parent agent, name the MCP tools you called and the data they returned. Example:
 
-> "Called `entity_read(tasha-brain)` — entity is fresh (0d), momentum high, active plan step is `step-001: ship decision_refresh tool`. Called `decision_check(...)` — clear, no conflicts."
+> "Called `entity_read(project-id)` — entity is fresh (0d), momentum high, active plan step is `step-001: ship the next task`. Called `decision_check(...)` — clear, no conflicts."
 
 This lets the parent verify your routing and trust your output.
 

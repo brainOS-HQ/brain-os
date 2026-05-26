@@ -61,7 +61,7 @@ const PROMPTS: PromptSpec[] = [
     name: "brain:wrap",
     title: "Brain OS — Close This Session",
     description:
-      "End the session cleanly. Updates project state, captures decisions, detects momentum shifts, and records what the system needs to remember.",
+      "End the session cleanly. Reviews what happened, asks what to remember in plain language, and saves the notes you approve for next time.",
     templateFile: "wrap",
   },
   {

@@ -57,9 +57,9 @@ Format as a fixed-column table, not a paraphrase:
 
 ```
 ENTITY               SCORE   MOMENTUM   NEXT
-brainos-marketing    75      high       Recruit 5 for EXP-1 hero usability test
-tasha-brain          75      high       Smoke tests for 6 core tools → fix bugs → v0.4.1
-3timesaday           55      medium     Add ANTHROPIC_API_KEY to Railway
+product-launch       75      high       Recruit 5 users for landing-page test
+core-engine          75      high       Run smoke tests → fix bugs → publish patch
+mobile-app           55      medium     Add missing production env var
 ```
 
 Plus a one-line **Do not do** summary and **Staleness alerts** as bullets. No long-form rephrasing of the JSON.

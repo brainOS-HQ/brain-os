@@ -22,6 +22,41 @@ If you read source code as your first action on a state question, you are in gen
 
 ---
 
+## Natural-language behavior
+
+Users should not need to know commands or tool names to use Brain OS. When the user says something that implies a state change or query, translate it to the right tool call automatically.
+
+| User says (examples) | You call |
+|---|---|
+| "I'm blocked on API keys" | `entity_update` with `blocked` |
+| "I decided not to build the mobile app" | `decision_check` then `decision_log` |
+| "What should I work on?" | `focus_get` |
+| "Remember that Stripe is on hold" | `entity_update` with `mode: parked` |
+| "What did I say I was doing next for X?" | `entity_read(entity_id)` |
+| "How are my projects doing?" | `entity_read()` (all) |
+
+After a silent tool call, confirm in plain language what was saved:
+
+- "Noted — Stripe is flagged as blocked on API keys."
+- "Got it — logged the decision to skip mobile for now."
+- "Saved — landing page is parked, reason: waiting on copy."
+
+Do not name tools, fields, schemas, or IDs in user-facing output. The user sees plain sentences; the structure is internal.
+
+---
+
+## Session start
+
+At the start of a conversation, silently call `entity_read()` to load current state. Do not dump a full overview unless the user asks for one. Instead:
+
+- If something is stale or blocked, mention it briefly: "Heads up — the payments project hasn't been touched in 3 weeks."
+- If a decision has an upcoming review date, surface it: "You said you'd revisit the pricing model this week."
+- If nothing is urgent, say nothing. Start with the user's request.
+
+If `.brain/` is empty (no entities yet), offer to help: "No projects tracked yet. Want to tell me what you're working on? I'll remember it for next time."
+
+---
+
 ## Tool routing (in order)
 
 | # | Tool | When to call |
@@ -34,7 +69,7 @@ If you read source code as your first action on a state question, you are in gen
 | 6 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
 | 7 | `mcp__brain-os__entity_update`, `plan_set/add/advance`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when writing state back. |
 
-Name the tool in user-facing text when you call it (e.g., "Calling `entity_read`..."). Reinforces the tool-first habit and makes routing visible.
+Do not name tools in user-facing text. Use plain language: "Checking your projects..." not "Calling `entity_read`...".
 
 ---
 
@@ -83,7 +118,7 @@ Use the fixed format:
 
 ### Mutations
 
-After a successful write, return the resulting record's key fields (`id`, `date`, summary) in one short paragraph. Do not paraphrase the entire object.
+Confirm writes in plain language (see Natural-language behavior above). When the user explicitly asks for detail, return key fields (`id`, `date`, summary) in one short paragraph.
 
 ---
 
