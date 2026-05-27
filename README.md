@@ -7,6 +7,7 @@
   <a href="https://github.com/brainOS-HQ/brain-os/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License" /></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-purple.svg" alt="MCP Compatible" /></a>
   <a href="https://brainos-hq.com"><img src="https://img.shields.io/badge/site-brainos--hq.com-black.svg" alt="brainos-hq.com" /></a>
+  <a href="https://glama.ai/mcp/servers/brainOS-HQ/brain-os"><img src="https://glama.ai/mcp/servers/brainOS-HQ/brain-os/badges/score.svg" alt="brainOS-HQ/brain-os MCP server" /></a>
 </p>
 
 # Brain OS
