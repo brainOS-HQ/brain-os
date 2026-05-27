@@ -2,9 +2,23 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.5.3] — 2026-05-27
+
+> Patch: removes implicit CWD auto-scoping from focus_get, scopes unreviewed decisions, sanitizes checkpoint filenames, adds Glama badge.
+
+### Fixed
+
+- Removed implicit CWD auto-scoping from `focus_get` — behavior now depends only on the explicit `entity_id` parameter, not on where the MCP server process was launched.
+- Unreviewed decisions are now filtered to the scoped entity set instead of leaking all entities when focus is scoped.
+- `brain-os-precompact.py` now sanitizes `session_id` before using it in checkpoint filenames.
+
+### Added
+
+- Glama MCP server score badge in README (required for awesome-mcp-servers listing).
+
 ## [0.5.2] — 2026-05-26
 
-> Minor release: focus auto-scoping, compact checkpoint, plain-language UX.
+> Minor release: focus entity scoping, compact checkpoint, plain-language UX.
 
 ### Added — Focus entity scoping
 
