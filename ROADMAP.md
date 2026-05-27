@@ -17,6 +17,10 @@ This roadmap is the public build plan. The longer product thesis lives in `STRAT
 - [x] **Semantic recall** — local/OpenAI embedding search over entities, decisions, patterns, and sessions.
 - [x] **Audit log** — append-only record of state mutations.
 - [x] **Smoke tests + CI** — regression coverage for core tools and safety helpers.
+- [x] **Plain-language UX** — agents speak in everyday language, not tool jargon or JSON field names.
+- [x] **Guided first-run flow** — agent instructions walk new users through creating their first entity, decision, and next move.
+- [x] **Focus CWD auto-scoping** — `/focus` detects the current project folder and scopes results to the matching entity.
+- [x] **Compact Checkpoint** — `PreCompact` hook saves unconfirmed session state before context compaction. `/wrap` surfaces and confirms checkpoints. Automatic in Claude Code; other MCP clients can use confirmed memory flow directly.
 
 ## Now — Launch Readiness
 
@@ -24,8 +28,9 @@ Goal: a new user can install Brain OS, create useful state, and see one agent re
 
 - [ ] **One-command install path** — Smithery/Cursor/Zed-friendly setup so users do not hand-edit config unless needed.
 - [ ] **Workspace discovery** — MCP server reliably finds the correct `.brain/` from each client without hardcoded `BRAIN_DIR`.
-- [ ] **Guided init flow** — first run captures one project, one active commitment, one blocker, and one next move.
+- [x] **Guided init flow** — first run captures one project, one active commitment, one blocker, and one next move.
 - [ ] **First-win demo flow** — capture decision → ask in another client → agent respects prior state.
+- [ ] **Workspace reminders** — "remind me in two days" stores a dated reminder and surfaces it on session start, focus, and status. No background daemon, no push notifications — reminders surface when you return to work.
 - [ ] **Default workflow** — capture → decide → next step → daily/weekly recap, with user-facing names instead of tool jargon.
 - [ ] **Starter templates** — solo builder, coding project, launch/marketing project, team workspace.
 
@@ -39,6 +44,15 @@ Goal: agents reliably use prior decisions without noisy false stops.
 - [ ] **Stale-state warnings** — require refresh/confirmation before acting on old state.
 
 Gate: `decision_check` catches real contradictions, stale decisions surface at the right time, and code-level decisions can be traced back to their reasoning.
+
+## Next — Draft Memory and Cross-Client Checkpoints
+
+Goal: Brain OS actively captures session state without waiting for the user, but only confirmed state becomes operational truth.
+
+- [ ] **Cross-client checkpoint API** — expose `checkpoint_create`, `intake_capture`, and `unconfirmed_state_read` as MCP tools so non-Claude-Code clients can create and reconcile checkpoints without client-specific hooks.
+- [ ] **Intake buffer** — auto-capture high-volume user input (pasted briefs, requirements, notes) as unconfirmed draft state. Agent preserves first, understands later. `/wrap` promotes confirmed parts.
+- [ ] **Three-tier memory model** — formalize captured (automatic, untrusted) → suggested (agent-extracted candidates) → confirmed (user-approved into entities/decisions/plans) as the core state lifecycle.
+- [ ] **Checkpoint expiry** — unconfirmed checkpoints older than N days are marked stale and excluded from `/wrap` reconciliation. Never auto-promoted.
 
 ## Next — State Model Expansion
 

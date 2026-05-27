@@ -1,6 +1,6 @@
 {
   "name": "brain-os",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "MCP server for operational state across AI agents. Decisions, plans, blockers, and project state that survive across sessions.",
   "type": "module",
   "main": "dist/index.js",

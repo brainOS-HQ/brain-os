@@ -2,6 +2,43 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.5.2] — 2026-05-26
+
+> Minor release: focus auto-scoping, compact checkpoint, plain-language UX.
+
+### Added — Focus entity scoping
+
+- `focus_get` now accepts an optional `entity_id` parameter and exposes a `scope` field in the result.
+- When `entity_id` is passed, returns scoped priorities for that entity plus its related entities. Omit for global cross-project priorities.
+- Unreviewed decisions are now scoped to the focused entity set instead of leaking all entities.
+
+### Added — Compact Checkpoint (Claude Code)
+
+- New `PreCompact` hook template (`templates/hooks/brain-os-precompact.py`) saves an unconfirmed checkpoint to `.brain/sessions/checkpoints/` before context compaction. Best-effort only — never blocks compaction.
+- Checkpoint data model: `status: "captured"`, `confirmed: false`, `source: "precompact"`. Includes last user goals, files touched, entity mentions, open questions, and last assistant summary.
+- `/wrap` now checks for unconfirmed checkpoints (Step 0) and asks the user to confirm, edit, or discard before folding into the normal wrap flow. Stale checkpoints are never auto-promoted to truth.
+- Automatic in Claude Code via `PreCompact` hook. Other MCP clients can use Brain OS confirmed memory directly; cross-client checkpoint MCP tools are on the roadmap.
+
+### Changed — Plain-language UX
+
+- Agent instructions rewritten: agents speak in everyday sentences, not tool jargon or JSON field names. MCP tools are used internally but never named in user-facing output.
+- Guided first-run flow: new users get a short conversation instead of a tool list. Agent extracts project name, status, blockers, and next move from natural answers.
+
+### Changed — Distributed templates updated
+
+- `BRAIN_OS_PROTOCOL.md`: `focus_get` signature updated to `(entity_id?, constraints?)`.
+- `templates/agent-instructions/AGENTS.md`: focus command vocabulary updated, `focus_get` signature updated.
+- `templates/commands/focus.md`: scoping instructions simplified — agent passes `entity_id` explicitly, no implicit CWD inference.
+- `templates/commands/wrap.md`: checkpoint reconciliation step added.
+
+### Fixed — Precompact hook filename sanitization
+
+- `brain-os-precompact.py` now sanitizes `session_id` before using it in checkpoint filenames.
+
+### Fixed — Version constant drift
+
+- `CURRENT_VERSION` in `src/index.ts` was `0.5.0` while `package.json` was `0.5.1`. Now both are `0.5.2`.
+
 ## [0.5.0] — 2026-05-24
 
 > Minor release: MCP Prompts, autowrap, and init cleanup.

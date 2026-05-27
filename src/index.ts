@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerTools } from "./server.js";
 import { registerMcpServer, initBrainDir } from "./utils/file-store.js";
 
-const CURRENT_VERSION = "0.5.0";
+const CURRENT_VERSION = "0.5.2";
 
 const server = new McpServer({
   name: "brain-os",

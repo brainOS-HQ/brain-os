@@ -8,6 +8,35 @@ Not just "what changed" : "what does the system need to remember?"
 
 Before any tool call, read `~/.claude/brain-os/PROTOCOL.md`. The wrap writes state back via MCP mutating tools; it must read current state via MCP tools first.
 
+## Step 0: Check for Compact Checkpoints
+
+Before asking wrap questions, check for unconfirmed checkpoint files:
+
+```
+.brain/sessions/checkpoints/*-*.json
+```
+
+Look for any file where `"confirmed": false` and `"status": "captured"`.
+
+If found:
+
+1. Read the checkpoint(s).
+2. Show the user a human summary of what was captured:
+   ```
+   Before context was compacted, I saved a checkpoint:
+   - You were working on: [last_user_goals summary]
+   - Files touched: [count] files in [project]
+   - Open threads: [open_questions summary]
+   - Last direction: [last_assistant_summary, one line]
+
+   Does this look right? I'll fold the confirmed parts into today's wrap.
+   ```
+3. User confirms, edits, or discards.
+4. Confirmed content feeds into the normal wrap questions below (pre-filling suggestions).
+5. After wrap completes, mark the checkpoint file: `"status": "confirmed"` or `"status": "discarded"`.
+
+If no checkpoints found, skip this step silently.
+
 ## Input
 
 Arguments: `$ARGUMENTS` (optional : entity name if wrapping a single entity). If no argument, wrap all entities touched this session.

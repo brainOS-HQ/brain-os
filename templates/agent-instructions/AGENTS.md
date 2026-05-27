@@ -86,7 +86,7 @@ Keep the whole exchange to 2-3 messages. Do not over-ask. If they give a short a
 |---|------|--------------|
 | 1 | `mcp__brain-os__entity_read(entity_id?)` | First call for any project-state question. Omit `entity_id` to list all entities. |
 | 2 | `mcp__brain-os__plan_read(entity_id)` | Get active step + progress for an entity. |
-| 3 | `mcp__brain-os__focus_get(constraints?)` | Prioritized recommendations across entities. Use for "what should I work on." |
+| 3 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass `entity_id` to scope to one project; omit for global. Use for "what should I work on." |
 | 4 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search across decisions, patterns, sessions when you don't know the entity ID. |
 | 5 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict. |
 | 6 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
@@ -175,7 +175,8 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 |---|---|---|
 | `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table |
 | `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card |
-| `focus` | `focus_get(max_results=3)` | Top-3 priorities table + do-not-do + staleness alerts |
+| `focus` | `focus_get(max_results=3)` | Global priorities table + do-not-do + staleness alerts. |
+| `focus <entity>` | `focus_get(entity_id=<entity>)` | Scoped priorities for that entity + related entities. |
 | `focus <constraints>` | `focus_get(constraints)` | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
 | `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask before mutating |

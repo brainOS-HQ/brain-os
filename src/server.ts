@@ -128,8 +128,9 @@ export function registerTools(server: McpServer) {
 
   server.tool(
     "focus_get",
-    "Determine what to work on right now based on urgency, momentum, leverage, staleness, and dependencies. Returns prioritized recommendations.",
+    "Determine what to work on right now based on urgency, momentum, leverage, staleness, and dependencies. Returns prioritized recommendations. Pass entity_id to scope focus to a single project.",
     {
+      entity_id: z.string().optional().describe("Scope focus to a single entity. When set, returns focus for that entity plus its related entities. Omit for global cross-project priorities."),
       constraints: z.string().optional().describe("Optional: 'only 2 hours', 'low energy', etc."),
       max_results: z.number().optional().describe("Max priorities to return (default 3)"),
       suppress_default_guidance: z
@@ -140,8 +141,8 @@ export function registerTools(server: McpServer) {
           "Default false. Env override: BRAIN_FOCUS_OMIT_DEFAULT_GUIDANCE=1."
         ),
     },
-    async ({ constraints, max_results, suppress_default_guidance }) => {
-      const result = await getFocus(constraints, max_results, { suppress_default_guidance });
+    async ({ entity_id, constraints, max_results, suppress_default_guidance }) => {
+      const result = await getFocus(constraints, max_results, { suppress_default_guidance, entity_id });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );

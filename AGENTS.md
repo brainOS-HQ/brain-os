@@ -28,7 +28,7 @@ If you read source code as your first action on a state question, you are in gen
 |---|------|--------------|
 | 1 | `mcp__brain-os__entity_read(entity_id?)` | First call for any project-state question. Omit `entity_id` to list all entities. |
 | 2 | `mcp__brain-os__plan_read(entity_id)` | Get active step + progress for an entity. |
-| 3 | `mcp__brain-os__focus_get(constraints?)` | Prioritized recommendations across entities. Use for "what should I work on." |
+| 3 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass `entity_id` to scope to one project; omit for global. Use for "what should I work on." |
 | 4 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search when you don't know the entity ID or want cross-decision / pattern / session context. |
 | 5 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict. |
 | 6 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
@@ -53,13 +53,24 @@ Known v0.4.1 bugs (do not work around silently — surface them):
 
 ### `focus_get` results
 
-Format as a fixed-column table, not a paraphrase:
+Always show the scope line first, then format as a fixed-column table:
 
 ```
+Scope: global
+
 ENTITY               SCORE   MOMENTUM   NEXT
 product-launch       75      high       Recruit 5 users for landing-page test
 core-engine          75      high       Run smoke tests → fix bugs → publish patch
 mobile-app           55      medium     Add missing production env var
+```
+
+For scoped focus (single entity):
+
+```
+Scope: Jinx
+
+ENTITY               SCORE   MOMENTUM   NEXT
+jinx-life            65      high       Ship onboarding flow v2
 ```
 
 Plus a one-line **Do not do** summary and **Staleness alerts** as bullets. No long-form rephrasing of the JSON.
@@ -123,7 +134,8 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 |---|---|---|
 | `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table (see Output formatting) |
 | `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card (see Output formatting) |
-| `focus` | `focus_get(max_results=3)` | Top-3 priorities table + do-not-do + staleness alerts |
+| `focus` | If CWD maps to a known entity → `focus_get(entity_id=<matched>)`. Otherwise → `focus_get(max_results=3)` (global). | Scoped or global priorities table + do-not-do + staleness alerts. Response always shows `Scope: <name>` or `Scope: global`. |
+| `focus --global` or `focus all` | `focus_get(max_results=3)` | Force global priorities even when inside a project folder. |
 | `focus <constraints>` | `focus_get(constraints)` | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
 | `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask for confirmation before mutating |
@@ -133,6 +145,19 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 | `strategy <question>` | `semantic_recall(question)` + `decision_check(question)` | Decision-framework analysis |
 
 If the user types `/brain` or `/focus` etc. in a client that doesn't support custom slash commands, treat the leading `/` as a hint and run the matching command anyway.
+
+---
+
+## CWD → entity mapping
+
+When a user runs `focus` (or other context-sensitive commands) from inside a project folder, infer the entity:
+
+1. Take the CWD folder name (e.g. `jinx-life`, `brain-os`, `the-boards`)
+2. Check if an entity with that ID exists via `entity_read(entity_id)`
+3. If it matches → use that entity_id for scoped focus
+4. If no match → fall back to global focus
+
+Common mappings where folder ≠ entity ID: the agent should call `entity_read()` once to scan names if the folder name doesn't match an entity ID directly (e.g. `brain-os` folder → `tasha-brain` entity). Clients that support MCP roots expose the CWD via `listRoots`.
 
 ---
 

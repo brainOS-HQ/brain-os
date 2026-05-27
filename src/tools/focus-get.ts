@@ -3,7 +3,6 @@ import { Decision } from "../schemas/decision.js";
 import { Pattern } from "../schemas/pattern.js";
 import { readJsonFile, listJsonFiles, getEntitiesDir, getDecisionsDir, getPatternsDir } from "../utils/file-store.js";
 import { calculateStaleness, today } from "../utils/staleness.js";
-
 interface FocusItem {
   entity_id: string;
   entity_name: string;
@@ -14,6 +13,7 @@ interface FocusItem {
 }
 
 interface FocusResult {
+  scope: string;
   priorities: FocusItem[];
   do_not_do: string[];
   staleness_alerts: string[];
@@ -24,27 +24,61 @@ interface FocusResult {
 export async function getFocus(
   constraints?: string,
   maxResults?: number,
-  options?: { suppress_default_guidance?: boolean },
+  options?: { suppress_default_guidance?: boolean; entity_id?: string },
 ): Promise<FocusResult> {
   const max = maxResults || 3;
-  // Allow callers (or env) to suppress the built-in "Do not …" lines.
-  // Env var is the escape hatch for embedded consumers (EVA, custom voices).
   const suppressDefaults =
     options?.suppress_default_guidance === true ||
     process.env.BRAIN_FOCUS_OMIT_DEFAULT_GUIDANCE === "1";
-  // Local date string in the user's timezone, e.g. "2026-05-23".
-  // Avoid `new Date(d.review_date) <= new Date()` because parsing
-  // "YYYY-MM-DD" coerces to UTC midnight, which fires the overdue flag
-  // hours early or late depending on the local timezone offset.
   const todayStr = today();
 
   const entityFiles = await listJsonFiles(getEntitiesDir());
-  const entities: Entity[] = [];
+  const allEntities: Entity[] = [];
+  const allActiveEntities: Entity[] = [];
   for (const file of entityFiles) {
     const e = await readJsonFile<Entity>(file);
-    if (e && (e.mode === "active" || e.mode === "incubating")) {
-      entities.push(e);
+    if (e) {
+      allEntities.push(e);
+      if (e.mode === "active" || e.mode === "incubating") {
+        allActiveEntities.push(e);
+      }
     }
+  }
+  const scopedEntityId = options?.entity_id;
+
+  let entities: Entity[];
+  let scope: string;
+  if (scopedEntityId) {
+    const target = allActiveEntities.find((e) => e.id === scopedEntityId);
+    if (!target) {
+      const parked = allEntities.find((e) => e.id === scopedEntityId) ?? null;
+      if (parked) {
+        scope = `${parked.name} (${parked.mode})`;
+        return {
+          scope,
+          priorities: [],
+          do_not_do: [`${parked.name} is ${parked.mode}${parked.mode_reason ? ` — ${parked.mode_reason}` : ""}`],
+          staleness_alerts: [],
+          unreviewed_decisions: [],
+          constraints_applied: constraints || null,
+        };
+      }
+      scope = `unknown entity: ${scopedEntityId}`;
+      return {
+        scope,
+        priorities: [],
+        do_not_do: [],
+        staleness_alerts: [],
+        unreviewed_decisions: [],
+        constraints_applied: constraints || null,
+      };
+    }
+    const relatedIds = new Set(target.related_entities);
+    entities = [target, ...allActiveEntities.filter((e) => relatedIds.has(e.id))];
+    scope = target.name;
+  } else {
+    entities = allActiveEntities;
+    scope = "global";
   }
 
   const decisionFiles = await listJsonFiles(getDecisionsDir());
@@ -154,8 +188,9 @@ export async function getFocus(
     do_not_do.push("Do not start new ideas — finish what's in progress");
   }
 
+  const scopedEntityIds = new Set(entities.map((e) => e.id));
   const unreviewed_decisions = allDecisions
-    .filter((d) => d.status === "active" && d.review_date <= todayStr)
+    .filter((d) => d.status === "active" && d.review_date <= todayStr && scopedEntityIds.has(d.entity_id))
     .map((d) => ({
       entity_id: d.entity_id,
       decision: d.decision,
@@ -163,6 +198,7 @@ export async function getFocus(
     }));
 
   return {
+    scope,
     priorities,
     do_not_do,
     staleness_alerts,

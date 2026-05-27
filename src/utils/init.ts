@@ -164,9 +164,23 @@ interface HookInfo {
   available: boolean;
 }
 
-function getHookInfo(): HookInfo {
-  const path = join(__dirname, "..", "..", "templates", "hooks", "brain-os-routing-guard.py");
-  return { templatePath: path, available: existsSync(path) };
+interface HookTemplates {
+  routingGuard: HookInfo;
+  precompact: HookInfo;
+}
+
+function getHookInfo(): HookTemplates {
+  const hooksDir = join(__dirname, "..", "..", "templates", "hooks");
+  return {
+    routingGuard: {
+      templatePath: join(hooksDir, "brain-os-routing-guard.py"),
+      available: existsSync(join(hooksDir, "brain-os-routing-guard.py")),
+    },
+    precompact: {
+      templatePath: join(hooksDir, "brain-os-precompact.py"),
+      available: existsSync(join(hooksDir, "brain-os-precompact.py")),
+    },
+  };
 }
 
 interface AgentInstructionSpec {
@@ -361,14 +375,22 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     output.push("Agent instructions skipped (--no-agent-instructions).");
   }
 
-  if (hook.available) {
+  if (hook.routingGuard.available || hook.precompact.available) {
     output.push("");
-    output.push("Optional routing-guard hook available (opt-in):");
-    output.push(`    ${hook.templatePath}`);
-    output.push("    Warns when pulse files are read while a .brain/ workspace exists.");
-    output.push("    To enable, add to .claude/settings.local.json:");
-    output.push('      { "hooks": { "PreToolUse": [{ "matcher": "Read",');
-    output.push(`            "hooks": [{ "type": "command", "command": "python3 ${hook.templatePath}" }] }] } }`);
+    output.push("Optional hooks available (opt-in):");
+  }
+  if (hook.routingGuard.available) {
+    output.push("");
+    output.push("  Routing guard — warns when pulse files are read while .brain/ exists:");
+    output.push(`    ${hook.routingGuard.templatePath}`);
+    output.push("    Add to .claude/settings.local.json under hooks.PreToolUse");
+  }
+  if (hook.precompact.available) {
+    output.push("");
+    output.push("  Compact checkpoint — saves session state before context compaction (Claude Code):");
+    output.push(`    ${hook.precompact.templatePath}`);
+    output.push("    Add to .claude/settings.local.json under hooks.PreCompact");
+    output.push("    /wrap will surface and confirm checkpoints before writing to memory.");
   }
 
   output.push("");

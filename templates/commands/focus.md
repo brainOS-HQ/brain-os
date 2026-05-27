@@ -14,13 +14,12 @@ Arguments: `$ARGUMENTS` (can be a project name like "brain os" or "ghost", OR a 
 
 ## Primary tool sequence
 
-**If the user names a specific project:**
-1. `mcp__brain-os__entity_read(entity_id)` : load that project's full state
+### Named project (user specified a project name):
+1. `mcp__brain-os__focus_get(entity_id=<matched>)` : scoped priorities for this project + related entities
 2. `mcp__brain-os__plan_read(entity_id)` : get active step and progress
 3. `mcp__brain-os__decision_check(entity.next_move, entity_id)` : verify no active decision contradicts the next move
-4. Skip `focus_get` — the user already told you what to focus on. Give them the deep view of that one project.
 
-**If no specific project is named (general focus):**
+### General focus (no project specified, or `--global` / `all`):
 1. `mcp__brain-os__focus_get(constraints=$ARGUMENTS)` : prioritized recommendations across all entities
 2. `mcp__brain-os__entity_read(top_pick.entity_id)` : detail on the #1 priority
 3. `mcp__brain-os__decision_check(top_pick.next_move, top_pick.entity_id)` : verify no active decision contradicts the recommendation
