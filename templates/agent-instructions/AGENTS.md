@@ -176,7 +176,7 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 | `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table |
 | `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card |
 | `focus` | `focus_get(max_results=3)` | Global priorities table + do-not-do + staleness alerts. |
-| `focus <entity>` | `focus_get(entity_id=<entity>)` | Scoped priorities for that entity + related entities. |
+| `focus <entity>` | `focus_get(entity_id=<entity>)` | Scoped priority for that entity only. |
 | `focus <constraints>` | `focus_get(constraints)` | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
 | `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask before mutating |

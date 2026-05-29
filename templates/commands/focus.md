@@ -15,7 +15,7 @@ Arguments: `$ARGUMENTS` (can be a project name like "brain os" or "ghost", OR a 
 ## Primary tool sequence
 
 ### Named project (user specified a project name):
-1. `mcp__brain-os__focus_get(entity_id=<matched>)` : scoped priorities for this project + related entities
+1. `mcp__brain-os__focus_get(entity_id=<matched>)` : scoped priority for this project only
 2. `mcp__brain-os__plan_read(entity_id)` : get active step and progress
 3. `mcp__brain-os__decision_check(entity.next_move, entity_id)` : verify no active decision contradicts the next move
 
@@ -65,11 +65,7 @@ Your top priority right now is **[PROJECT NAME]**.
 **Decision review due:** "[decision text]" — reaffirm, update, or archive it.
 
 ---
-[ALWAYS AT THE END. If staleness alerts or unreviewed decisions exist for OTHER projects:]
-**Elsewhere in your workspace worth checking:**
-- [PROJECT] hasn't been touched in [N] days — ship something or park it.
-- [PROJECT] has a decision review due: "[decision text]"
-[If nothing from other projects, omit this section entirely.]
+[For named-project focus, do not add other projects unless the user explicitly asks for global context.]
 ```
 
 ## After output

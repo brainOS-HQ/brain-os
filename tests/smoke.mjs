@@ -18,13 +18,14 @@ const { setPlan, advancePlan } = await import("../dist/tools/plan-update.js");
 const { refreshDecision } = await import("../dist/tools/decision-refresh.js");
 const { updateEntity } = await import("../dist/tools/entity-update.js");
 const { getFocus } = await import("../dist/tools/focus-get.js");
+const { resolveContext } = await import("../dist/tools/context-resolve.js");
 const { readAuditLog } = await import("../dist/tools/audit-read.js");
 const { semanticRecall, EmbeddingsNotConfiguredError } = await import("../dist/utils/embeddings.js");
 const { calculateStaleness, today } = await import("../dist/utils/staleness.js");
 const { writeJsonFile, readJsonFile, assertSafeId } = await import("../dist/utils/file-store.js");
 const { appendFile, writeFile } = await import("node:fs/promises");
 
-async function seedEntity(id, name) {
+async function seedEntity(id, name, overrides = {}) {
   await writeJsonFile(join(tmpBrain, "entities", `${id}.json`), {
     id,
     name,
@@ -43,6 +44,7 @@ async function seedEntity(id, name) {
     metadata: {},
     created_at: "2026-05-21",
     last_updated: "2026-05-21",
+    ...overrides,
   });
 }
 
@@ -500,4 +502,107 @@ test("focus_get: suppress_default_guidance omits the built-in 'Do not …' lines
     !withoutDefaults.do_not_do.includes(defaultLine),
     "suppress_default_guidance must omit the hardcoded line"
   );
+});
+
+// v0.5.3 regression — explicit project scope must stay strict. Related
+// entities are useful for graph/global views, but leaking them into scoped
+// focus makes agents answer about projects the user did not ask about.
+test("focus_get: explicit entity_id returns only the scoped entity, not related entities", async () => {
+  await seedEntity("ent-focus-main", "Focus Main", {
+    priority: "critical",
+    related_entities: ["ent-focus-related"],
+  });
+  await seedEntity("ent-focus-related", "Focus Related", {
+    priority: "critical",
+    momentum: "high",
+  });
+
+  const result = await getFocus(undefined, 10, { entity_id: "ent-focus-main" });
+
+  assert.equal(result.scope, "Focus Main");
+  assert.deepEqual(
+    result.priorities.map((item) => item.entity_id),
+    ["ent-focus-main"],
+    "scoped focus should not include related entities"
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// context_resolve v1 — deterministic context router.
+// NOTE: this suite shares one tmpBrain across all tests, so the entity set is
+// large by now. Context tests use deliberately unique tokens to avoid
+// cross-test mention/lexical collisions.
+// ──────────────────────────────────────────────────────────────────────────
+
+test("context_resolve: explicit_entity_id is authoritative (confidence 1.0)", async () => {
+  await seedEntity("ctx-explicit", "Ctx Explicit Target");
+  const r = await resolveContext({ explicit_entity_id: "ctx-explicit", user_message: "do whatever" });
+  assert.equal(r.entity_id, "ctx-explicit");
+  assert.equal(r.confidence, 1.0);
+  assert.equal(r.signal, "explicit_entity_id");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: named mention resolves at 0.95, proceed silently", async () => {
+  await seedEntity("ctx-zephyr", "Zephyr Quokka Platform");
+  const r = await resolveContext({ user_message: "rewrite the Zephyr Quokka Platform landing page" });
+  assert.equal(r.entity_id, "ctx-zephyr");
+  assert.equal(r.confidence, 0.95);
+  assert.equal(r.signal, "user_mention");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: named mention requires token boundaries, not substrings", async () => {
+  await seedEntity("ctx-ghost", "Ghost");
+  const r = await resolveContext({ user_message: "fix the ghostwriter onboarding copy" });
+  assert.notEqual(r.signal, "user_mention", "substring match must not count as explicit mention");
+  assert.notEqual(r.entity_id, "ctx-ghost", "ghostwriter must not resolve to Ghost at 0.95");
+});
+
+test("context_resolve: alias match resolves the entity", async () => {
+  await seedEntity("ctx-vermillion", "Internal Billing Reconciler", { aliases: ["vermillion"] });
+  const r = await resolveContext({ user_message: "let's debug vermillion's webhook" });
+  assert.equal(r.entity_id, "ctx-vermillion");
+  assert.equal(r.signal, "user_mention");
+});
+
+test("context_resolve: explicit mention OVERRIDES files in another repo", async () => {
+  await seedEntity("ctx-landingproj", "Ctx Landing Proj");
+  await seedEntity("ctx-otherrepo", "Ctx Other Repo");
+  const r = await resolveContext({
+    user_message: "rewrite Ctx Landing Proj positioning copy",
+    files_touched: ["/Users/x/code/ctx-otherrepo/src/server.ts"],
+  });
+  assert.equal(r.entity_id, "ctx-landingproj", "mention must win over file location");
+  assert.equal(r.signal, "user_mention");
+  assert.ok(
+    r.evidence.some((e) => e.includes("ctx-otherrepo") && /priority/i.test(e)),
+    "should record that files pointed elsewhere but mention took priority"
+  );
+});
+
+test("context_resolve: ambiguous mention asks instead of guessing", async () => {
+  await seedEntity("ctx-mango-alpha", "Mango Alpha Service");
+  await seedEntity("ctx-mango-beta", "Mango Beta Service");
+  const r = await resolveContext({ user_message: "compare Mango Alpha Service and Mango Beta Service" });
+  assert.equal(r.entity_id, null, "ambiguous strong-tier match must not resolve to a guess");
+  assert.equal(r.ask_user, true);
+  assert.ok(r.confidence < 0.5);
+  assert.ok(r.candidates.length >= 2, "should list the competing candidates");
+});
+
+test("context_resolve: files_touched resolves at 0.6 when no mention", async () => {
+  await seedEntity("ctx-filesonly", "Ctx Files Only");
+  const r = await resolveContext({ files_touched: ["/repo/ctx-filesonly/index.ts"] });
+  assert.equal(r.entity_id, "ctx-filesonly");
+  assert.equal(r.confidence, 0.6);
+  assert.equal(r.signal, "files_touched");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: no usable signal → ask_user, no guess", async () => {
+  const r = await resolveContext({ user_message: "xyzzy plugh frobnicate snorgle" });
+  assert.equal(r.entity_id, null);
+  assert.equal(r.ask_user, true);
+  assert.equal(r.confidence, 0);
 });

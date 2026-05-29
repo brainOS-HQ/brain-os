@@ -13,6 +13,7 @@ import { readAuditLog } from "./tools/audit-read.js";
 import { setPlan, advancePlan, addPlanSteps, readPlan } from "./tools/plan-update.js";
 import { checkDecision } from "./tools/decision-check.js";
 import { refreshDecision } from "./tools/decision-refresh.js";
+import { resolveContext } from "./tools/context-resolve.js";
 import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 
@@ -46,6 +47,21 @@ export function registerTools(server: McpServer) {
     },
     async ({ entity_id }) => {
       const result = entity_id ? await readEntity(entity_id) : await readAllEntities();
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "context_resolve",
+    "Resolve which entity the current work belongs to, with a derived confidence. Deterministic — matches explicit signals (passed entity, named mention, active mission, files touched) before weak ones (lexical, single-active); never guesses from cwd. Returns entity_id + confidence + ask_user. Call this BEFORE focus_get/decision_check when the target entity is not already known, then pass the returned entity_id into them. Confidence >= 0.80: proceed silently. 0.50-0.79: proceed but say 'I think this is X'. < 0.50 (ask_user true): ask one short question.",
+    {
+      user_message: z.string().optional().describe("What the user said they want to do, verbatim. Strongest inferred signal."),
+      files_touched: z.array(z.string()).optional().describe("Paths being worked on. Matched by exact path segment against entity id/aliases — assists only, never overrides an explicit mention."),
+      explicit_entity_id: z.string().optional().describe("Caller-asserted entity id. Authoritative (confidence 1.0) when it matches a known entity."),
+      active_mission_id: z.string().optional().describe("Entity id of the active approved mission/task, if any."),
+    },
+    async (input) => {
+      const result = await resolveContext(input);
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
@@ -130,7 +146,7 @@ export function registerTools(server: McpServer) {
     "focus_get",
     "Determine what to work on right now based on urgency, momentum, leverage, staleness, and dependencies. Returns prioritized recommendations. Pass entity_id to scope focus to a single project.",
     {
-      entity_id: z.string().optional().describe("Scope focus to a single entity. When set, returns focus for that entity plus its related entities. Omit for global cross-project priorities."),
+      entity_id: z.string().optional().describe("Scope focus to a single entity. When set, returns only that entity. Omit for global cross-project priorities."),
       constraints: z.string().optional().describe("Optional: 'only 2 hours', 'low energy', etc."),
       max_results: z.number().optional().describe("Max priorities to return (default 3)"),
       suppress_default_guidance: z
