@@ -83,6 +83,7 @@ export function registerTools(server: McpServer) {
         evidence_of_progress: z.string().optional(),
         open_questions: z.array(z.string()).optional(),
         related_entities: z.array(z.string()).optional(),
+        aliases: z.array(z.string()).optional().describe("Alternate names/nicknames and folder slugs the user might type or work in (e.g. ['brain-os', 'brainos']). Read by context_resolve for entity matching; explicit mentions still outrank these."),
       }).describe("Fields to update"),
     },
     async ({ entity_id, updates }) => {

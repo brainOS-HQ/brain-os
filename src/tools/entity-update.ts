@@ -17,6 +17,7 @@ interface EntityUpdates {
   evidence_of_progress?: string;
   open_questions?: string[];
   related_entities?: string[];
+  aliases?: string[];
 }
 
 export async function updateEntity(

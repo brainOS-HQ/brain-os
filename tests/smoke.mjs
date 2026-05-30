@@ -606,3 +606,32 @@ test("context_resolve: no usable signal → ask_user, no guess", async () => {
   assert.equal(r.ask_user, true);
   assert.equal(r.confidence, 0);
 });
+
+test("entity_update: can write aliases, and context_resolve then matches them", async () => {
+  // Seeded with no aliases — write them through the tool, not the JSON file.
+  await seedEntity("ctx-quartz", "Quartz Ledger Service");
+
+  // Before: the folder slug "quartz-svc" does not resolve to the entity.
+  const before = await resolveContext({ files_touched: ["/repo/quartz-svc/index.ts"] });
+  assert.notEqual(before.entity_id, "ctx-quartz", "slug should not match before aliases are written");
+
+  // Write aliases through entity_update (the gap being closed).
+  const result = await updateEntity("ctx-quartz", { aliases: ["quartz-svc", "quartz"] });
+  assert.deepEqual(result.entity.aliases, ["quartz-svc", "quartz"], "aliases must persist on the entity");
+  assert.ok(
+    result.changes.some((c) => c.startsWith("aliases:")),
+    "aliases change must be recorded in the audit changes"
+  );
+
+  // Persisted to disk.
+  const onDisk = await readJsonFile(join(tmpBrain, "entities", "ctx-quartz.json"));
+  assert.deepEqual(onDisk.aliases, ["quartz-svc", "quartz"]);
+
+  // After: spoken alias resolves at 0.95, and the folder slug now resolves via files.
+  const spoken = await resolveContext({ user_message: "what's blocking quartz right now" });
+  assert.equal(spoken.entity_id, "ctx-quartz");
+  assert.equal(spoken.signal, "user_mention");
+
+  const byFiles = await resolveContext({ files_touched: ["/repo/quartz-svc/index.ts"] });
+  assert.equal(byFiles.entity_id, "ctx-quartz", "written slug alias must now match files_touched");
+});
