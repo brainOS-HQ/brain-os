@@ -175,8 +175,8 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 |---|---|---|
 | `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table |
 | `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card |
-| `focus` | `focus_get(max_results=3)` | Global priorities table + do-not-do + staleness alerts. |
-| `focus <entity>` | `focus_get(entity_id=<entity>)` | Scoped priority for that entity only. |
+| `focus` | `context_resolve(user_message, files_touched=[client workspace path])` → if resolved, `focus_get(entity_id=<matched>)`; otherwise `focus_get(max_results=3)` | Scoped if the current client-visible workspace maps cleanly to an entity; otherwise global priorities table + do-not-do + staleness alerts. |
+| `focus <entity>` | `context_resolve(user_message=<entity>)` → `focus_get(entity_id=<matched>)` | Scoped priority for that entity only. |
 | `focus <constraints>` | `focus_get(constraints)` | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
 | `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask before mutating |
@@ -184,6 +184,8 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 | `patterns` | `pattern_detect()` | Active patterns + new patterns + risk lines |
 | `graph` or `graph <entity>` | `entity_read()` to walk `related_entities` | ASCII relationship graph |
 | `strategy <question>` | `semantic_recall(question)` + `decision_check(question)` | Decision-framework analysis |
+
+For focus scoping, client-visible workspace/folder context is a weak intent signal. It may be passed to `context_resolve` as `files_touched`, but explicit user project names win. Do not use MCP server `process.cwd()` for scoping; it reflects server launch location, not necessarily the user's current workspace.
 
 If the user types `/brain` or `/focus` etc. in a client that doesn't support custom slash commands, treat the leading `/` as a hint and run the matching command anyway.
 

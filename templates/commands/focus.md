@@ -14,12 +14,25 @@ Arguments: `$ARGUMENTS` (can be a project name like "brain os" or "ghost", OR a 
 
 ## Primary tool sequence
 
-### Named project (user specified a project name):
+### Step 0 — Resolve scope
+
+Before calling `focus_get`, resolve whether this is a named/scoped focus or a global focus.
+
+1. If `$ARGUMENTS` contains `--global` or `all`, skip scope resolution → use **General focus**.
+2. If `$ARGUMENTS` names a project, call `mcp__brain-os__context_resolve(user_message=$ARGUMENTS)`.
+3. If no project is named but the client exposes the current workspace/folder path, call `mcp__brain-os__context_resolve(user_message=$ARGUMENTS, files_touched=[current workspace/folder path])`.
+4. If `context_resolve` returns `entity_id` with `ask_user=false`, use **Named project** with that entity.
+5. If `context_resolve` cannot resolve, but the client-visible folder is a known workspace mapping (for example `brain-os` → `tasha-brain`, `jinx-life` → `jinx-life`), use that as a weak client-side folder signal.
+6. Otherwise use **General focus**. Do not ask the user to clarify for a generic "focus" request unless the resolver reports an explicit ambiguity.
+
+Important: this uses the client-visible workspace/folder path as an intent signal. It is not server-side `process.cwd()` inference. Explicit user project names always beat folder context.
+
+### Named project (user specified a project name OR context resolution found one):
 1. `mcp__brain-os__focus_get(entity_id=<matched>)` : scoped priority for this project only
 2. `mcp__brain-os__plan_read(entity_id)` : get active step and progress
 3. `mcp__brain-os__decision_check(entity.next_move, entity_id)` : verify no active decision contradicts the next move
 
-### General focus (no project specified, or `--global` / `all`):
+### General focus (`--global`, `all`, or no scope resolved):
 1. `mcp__brain-os__focus_get(constraints=$ARGUMENTS)` : prioritized recommendations across all entities
 2. `mcp__brain-os__entity_read(top_pick.entity_id)` : detail on the #1 priority
 3. `mcp__brain-os__decision_check(top_pick.next_move, top_pick.entity_id)` : verify no active decision contradicts the recommendation

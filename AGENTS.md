@@ -134,7 +134,7 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 |---|---|---|
 | `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table (see Output formatting) |
 | `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card (see Output formatting) |
-| `focus` | If CWD maps to a known entity → `focus_get(entity_id=<matched>)`. Otherwise → `focus_get(max_results=3)` (global). | Scoped or global priorities table + do-not-do + staleness alerts. Response always shows `Scope: <name>` or `Scope: global`. |
+| `focus` | `context_resolve(user_message, files_touched=[client workspace path])`; if resolved → `focus_get(entity_id=<matched>)`. Otherwise → `focus_get(max_results=3)` (global). | Scoped or global priorities table + do-not-do + staleness alerts. Response always shows `Scope: <name>` or `Scope: global`. |
 | `focus --global` or `focus all` | `focus_get(max_results=3)` | Force global priorities even when inside a project folder. |
 | `focus <constraints>` | `focus_get(constraints)` | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
@@ -148,16 +148,16 @@ If the user types `/brain` or `/focus` etc. in a client that doesn't support cus
 
 ---
 
-## CWD → entity mapping
+## Client Workspace → Entity Mapping
 
-When a user runs `focus` (or other context-sensitive commands) from inside a project folder, infer the entity:
+When a user runs `focus` (or other context-sensitive commands) from inside a project folder, client-visible workspace/folder context is a valid weak signal. Do **not** use MCP server `process.cwd()` for scoping; it reflects server launch location and was removed from `focus_get`. The client/agent may pass the current workspace path to `context_resolve(files_touched=[...])`.
 
-1. Take the CWD folder name (e.g. `jinx-life`, `brain-os`, `the-boards`)
-2. Check if an entity with that ID exists via `entity_read(entity_id)`
-3. If it matches → use that entity_id for scoped focus
-4. If no match → fall back to global focus
+1. If the user names a project, that explicit mention wins.
+2. Otherwise call `context_resolve(user_message, files_touched=[client workspace path])`.
+3. If it resolves with `ask_user=false`, pass the returned `entity_id` to `focus_get`.
+4. If it cannot resolve, fall back to global focus unless the user explicitly asked for a named project and ambiguity matters.
 
-Common mappings where folder ≠ entity ID: the agent should call `entity_read()` once to scan names if the folder name doesn't match an entity ID directly (e.g. `brain-os` folder → `tasha-brain` entity). Clients that support MCP roots expose the CWD via `listRoots`.
+Common mappings where folder ≠ entity ID still matter during the transition to aliases/repo paths (e.g. `brain-os` folder → `tasha-brain` entity). Treat those as weak client-side signals only; explicit user mentions override them.
 
 ---
 
