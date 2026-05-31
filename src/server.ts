@@ -15,6 +15,7 @@ import { checkDecision } from "./tools/decision-check.js";
 import { refreshDecision } from "./tools/decision-refresh.js";
 import { resolveContext } from "./tools/context-resolve.js";
 import { scanProjectEvidence } from "./tools/project-evidence-scan.js";
+import { reviewDecisions } from "./tools/decision-review.js";
 import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 
@@ -314,6 +315,20 @@ export function registerTools(server: McpServer) {
     },
     async ({ root_path, entity_id }) => {
       const result = scanProjectEvidence({ root_path, entity_id });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "decision_review",
+    "Review-debt inbox: bucket overdue decisions into still_true / changed / archive / needs_evidence with a recommended action for each. READ-ONLY — it proposes and cites reasons but mutates nothing; you confirm, then apply via decision_refresh / decision_log (per dec-051). Auto-detects duplicate-stub decisions (same text + placeholder proof_action + self-dated review) and recommends archiving them at the canonical entry. Ranks by overdue age, entity priority, blockers, and cheap-cleanup value; caps output. 'changed' is not auto-detected (human judgment).",
+    {
+      entity_id: z.string().optional().describe("Scope to one entity. Omit to review all entities' overdue decisions."),
+      limit: z.number().optional().describe("Max decisions to surface (default 5). The inbox is meant to be cleared in small batches, not as a flat list of 30."),
+      include_parked: z.boolean().optional().describe("Include decisions on parked/archived entities (default false)."),
+    },
+    async ({ entity_id, limit, include_parked }) => {
+      const result = await reviewDecisions({ entity_id, limit, include_parked });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );

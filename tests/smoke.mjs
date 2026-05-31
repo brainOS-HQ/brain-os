@@ -20,6 +20,7 @@ const { updateEntity } = await import("../dist/tools/entity-update.js");
 const { getFocus } = await import("../dist/tools/focus-get.js");
 const { resolveContext } = await import("../dist/tools/context-resolve.js");
 const { scanProjectEvidence } = await import("../dist/tools/project-evidence-scan.js");
+const { reviewDecisions } = await import("../dist/tools/decision-review.js");
 const { readAuditLog } = await import("../dist/tools/audit-read.js");
 const { semanticRecall, EmbeddingsNotConfiguredError } = await import("../dist/utils/embeddings.js");
 const { calculateStaleness, today } = await import("../dist/utils/staleness.js");
@@ -726,4 +727,70 @@ test("project_evidence_scan: empty dir → warning, empty arrays, no crash", asy
   assert.equal(r.recent_git_activity.length, 0);
   assert.ok(r.warnings.length >= 1, "should warn when no evidence files and no git history exist");
   rmSync(empty, { recursive: true, force: true });
+});
+
+test("decision_review: duplicate stub → archive, pointing at canonical (canonical not surfaced)", async () => {
+  await seedEntity("dr-dup", "DR Dup Test", { priority: "high" });
+  const canonical = await logDecision({
+    entity_id: "dr-dup",
+    decision: "Human approval required before all sends in v1",
+    why: "Trust positioning",
+    alternatives: [{ option: "auto-send", rejected_because: "trust risk" }],
+    proof_action: "Draft generation works and never auto-sends",
+    review_date: "2026-12-31", // future → canonical, not overdue
+  });
+  const stub = await logDecision({
+    entity_id: "dr-dup",
+    decision: "Human approval required before all sends in v1", // same text
+    why: "duplicate logging noise",
+    proof_action: "Review in next session", // placeholder
+    review_date: today(), // self-dated (date == review_date == today) and overdue
+  });
+
+  const r = await reviewDecisions({ entity_id: "dr-dup" });
+  assert.equal(r.groups.archive.length, 1, "only the stub should be archive-bucketed");
+  const item = r.groups.archive[0];
+  assert.equal(item.decision_id, stub.logged.id);
+  assert.equal(item.duplicate_of, canonical.logged.id, "should point at the canonical decision");
+  assert.ok(item.confidence >= 0.9, "duplicate-stub detection is high confidence");
+  const allShown = Object.values(r.groups).flat();
+  assert.ok(!allShown.some((i) => i.decision_id === canonical.logged.id), "future-dated canonical must not appear as review debt");
+});
+
+test("decision_review: overdue decision with no evidence → needs_evidence", async () => {
+  await seedEntity("dr-noev", "DR NoEvidence");
+  const dec = await logDecision({
+    entity_id: "dr-noev",
+    decision: "Target support teams under 20 people",
+    why: "ICP focus",
+    proof_action: "Interview 5 support teams",
+    review_date: "2026-01-01", // overdue
+  });
+  const r = await reviewDecisions({ entity_id: "dr-noev" });
+  assert.equal(r.groups.needs_evidence.length, 1);
+  assert.equal(r.groups.needs_evidence[0].decision_id, dec.logged.id);
+  assert.equal(r.groups.archive.length, 0);
+});
+
+test("decision_review: overdue decision with evidence → still_true; mutates nothing", async () => {
+  await seedEntity("dr-still", "DR StillTrue");
+  const dec = await logDecision({
+    entity_id: "dr-still",
+    decision: "Gmail first — v1 targets Google Workspace only",
+    why: "ship focus",
+    proof_action: "Gmail OAuth works",
+    review_date: "2026-01-01", // overdue
+  });
+  await refreshDecision({ decision_id: dec.logged.id, add_evidence: "Gmail OAuth integration shipped" });
+
+  const decisionsPath = join(tmpBrain, "decisions", "decisions.json");
+  const before = JSON.stringify(await readJsonFile(decisionsPath));
+
+  const r = await reviewDecisions({ entity_id: "dr-still" });
+  assert.equal(r.groups.still_true.length, 1);
+  assert.equal(r.groups.still_true[0].decision_id, dec.logged.id);
+  assert.ok(r.groups.still_true[0].evidence_count >= 1, "should report the appended evidence");
+
+  const after = JSON.stringify(await readJsonFile(decisionsPath));
+  assert.equal(after, before, "decision_review must not mutate decisions.json");
 });
