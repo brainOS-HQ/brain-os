@@ -19,6 +19,7 @@ const { refreshDecision } = await import("../dist/tools/decision-refresh.js");
 const { updateEntity } = await import("../dist/tools/entity-update.js");
 const { getFocus } = await import("../dist/tools/focus-get.js");
 const { resolveContext } = await import("../dist/tools/context-resolve.js");
+const { scanProjectEvidence } = await import("../dist/tools/project-evidence-scan.js");
 const { readAuditLog } = await import("../dist/tools/audit-read.js");
 const { semanticRecall, EmbeddingsNotConfiguredError } = await import("../dist/utils/embeddings.js");
 const { calculateStaleness, today } = await import("../dist/utils/staleness.js");
@@ -663,4 +664,66 @@ test("entity_update: can write aliases, and context_resolve then matches them", 
 
   const byFiles = await resolveContext({ files_touched: ["/repo/quartz-svc/index.ts"] });
   assert.equal(byFiles.entity_id, "ctx-quartz", "written slug alias must now match files_touched");
+});
+
+test("project_evidence_scan: extracts next move, human gate, dirty file; mutates nothing", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, readdirSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-"));
+
+  writeFileSync(
+    join(repo, "STATE.md"),
+    "# State\n\nEXACT NEXT MOVE: run /gsd:plan-phase 137.9\nProgress: tasks 1+2 complete.\n",
+  );
+  writeFileSync(
+    join(repo, "HANDOFF_2026-05-31.md"),
+    "# Handoff\n\nPhase 165-01 Task 3 is a HUMAN GATE — review corpus bins.\n" +
+      "DO NOT TOUCH eva-brain.js from two sessions.\n" +
+      "137.9 and 137.7 can run in parallel with Phase 165.\n",
+  );
+
+  // git repo with one commit + an untracked (dirty) file
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  g("init", "-q");
+  g("add", "STATE.md", "HANDOFF_2026-05-31.md");
+  g("commit", "-q", "-m", "seed operating state");
+  writeFileSync(join(repo, "scratch.txt"), "uncommitted work\n");
+
+  const repoBefore = readdirSync(repo).sort().join(",");
+  const brainBefore = readdirSync(join(tmpBrain, "entities")).length;
+
+  const r = scanProjectEvidence({ root_path: repo, entity_id: "eva" });
+
+  assert.equal(r.entity_id, "eva");
+  assert.ok(r.detected_next_moves.some((l) => l.includes("137.9")), "should extract the EXACT NEXT MOVE line");
+  assert.ok(r.detected_human_gates.some((l) => /human gate/i.test(l)), "should extract the HUMAN GATE line");
+  assert.ok(r.do_not_touch.some((l) => l.includes("eva-brain.js")), "should extract DO NOT TOUCH");
+  assert.ok(r.safe_parallel_work.some((l) => /parallel/i.test(l)), "should extract the parallel-work line");
+  assert.ok(r.dirty_files.some((f) => f.includes("scratch.txt")), "should report the dirty file");
+  assert.ok(r.recent_git_activity.length >= 1, "should report recent commits");
+  assert.ok(r.current_state_files.includes("STATE.md"), "STATE.md should be listed");
+  assert.ok(
+    r.evidence_used.includes("STATE.md") && r.evidence_used.some((e) => e.startsWith("git log")),
+    "evidence_used should cite both files and git",
+  );
+  assert.equal(r.warnings.length, 0, "clean repo with evidence should produce no warnings");
+
+  // No mutation: repo top-level files and Brain OS entities are unchanged.
+  assert.equal(readdirSync(repo).sort().join(","), repoBefore, "scan must not add/remove repo files");
+  assert.equal(readdirSync(join(tmpBrain, "entities")).length, brainBefore, "scan must not write Brain OS state");
+
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test("project_evidence_scan: empty dir → warning, empty arrays, no crash", async () => {
+  const empty = mkdtempSync(join(tmpdir(), "brain-evscan-empty-"));
+  const r = scanProjectEvidence({ root_path: empty });
+  assert.equal(r.current_state_files.length, 0);
+  assert.equal(r.detected_next_moves.length, 0);
+  assert.equal(r.recent_git_activity.length, 0);
+  assert.ok(r.warnings.length >= 1, "should warn when no evidence files and no git history exist");
+  rmSync(empty, { recursive: true, force: true });
 });

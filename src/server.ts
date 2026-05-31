@@ -14,6 +14,7 @@ import { setPlan, advancePlan, addPlanSteps, readPlan } from "./tools/plan-updat
 import { checkDecision } from "./tools/decision-check.js";
 import { refreshDecision } from "./tools/decision-refresh.js";
 import { resolveContext } from "./tools/context-resolve.js";
+import { scanProjectEvidence } from "./tools/project-evidence-scan.js";
 import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 
@@ -300,6 +301,19 @@ export function registerTools(server: McpServer) {
     },
     async ({ entity_id }) => {
       const result = await readPlan(entity_id);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "project_evidence_scan",
+    "Read-only scan of a repo's native operating state (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md + recent git activity / dirty files). Returns evidence — human gates, blockers, next moves, do-not-touch, safe parallel work — surfaced as exact lines. Call AFTER context_resolve and BEFORE building a focus answer. Mutates nothing and does no inference: it returns ALL candidate signals; deciding the focus is the agent's job. This is NOT context_resolve — do not use it to pick which project you're in.",
+    {
+      root_path: z.string().describe("Absolute path to the repo/project root to scan."),
+      entity_id: z.string().optional().describe("Optional Brain OS entity this repo maps to (echoed back; does not affect the scan)."),
+    },
+    async ({ root_path, entity_id }) => {
+      const result = scanProjectEvidence({ root_path, entity_id });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
