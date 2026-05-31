@@ -20,12 +20,20 @@ Before calling `focus_get`, resolve whether this is a named/scoped focus or a gl
 
 1. If `$ARGUMENTS` contains `--global` or `all`, skip scope resolution → use **General focus**.
 2. If `$ARGUMENTS` names a project, call `mcp__brain-os__context_resolve(user_message=$ARGUMENTS)`.
-3. If no project is named but the client exposes the current workspace/folder path, call `mcp__brain-os__context_resolve(user_message=$ARGUMENTS, files_touched=[current workspace/folder path])`.
+3. If no project is named, obtain the client-visible workspace/folder path first (from client metadata or by running `pwd` in the active workspace), then call `mcp__brain-os__context_resolve(user_message=$ARGUMENTS, files_touched=[current workspace/folder path])`.
 4. If `context_resolve` returns `entity_id` with `ask_user=false`, use **Named project** with that entity.
 5. If `context_resolve` cannot resolve, but the client-visible folder is a known workspace mapping (for example `brain-os` → `tasha-brain`, `jinx-life` → `jinx-life`), use that as a weak client-side folder signal.
-6. Otherwise use **General focus**. Do not ask the user to clarify for a generic "focus" request unless the resolver reports an explicit ambiguity.
+6. Only use **General focus** after scope resolution has actually run or after the user explicitly requested `--global` / `all`. Do not ask the user to clarify for a generic "focus" request unless the resolver reports an explicit ambiguity.
 
 Important: this uses the client-visible workspace/folder path as an intent signal. It is not server-side `process.cwd()` inference. Explicit user project names always beat folder context.
+
+### Step 1 — Scan repo evidence (when a workspace path is known)
+
+If you have a client-visible workspace/folder path, call `mcp__brain-os__project_evidence_scan(root_path=<workspace path>, entity_id=<resolved entity, if any>)` BEFORE `focus_get`.
+
+This is read-only and deterministic — it reads repo-native operating state (`STATE.md`, `FLAGS*`, `HANDOFF*`, `ROADMAP.md`, `PLAN*.md`, `TODO.md`, `AGENTS.md`) plus recent git activity and dirty files, and returns exact lines for: human gates, blockers, next moves, do-not-touch, and safe parallel work. It does NOT decide focus — it supplies evidence the brief combines with Brain OS memory.
+
+Skip this step only when no workspace path is available (e.g. a purely conversational client). It is a separate adapter from `context_resolve` — never use it to pick which project you are in.
 
 ### Named project (user specified a project name OR context resolution found one):
 1. `mcp__brain-os__focus_get(entity_id=<matched>)` : scoped priority for this project only
@@ -80,6 +88,32 @@ Your top priority right now is **[PROJECT NAME]**.
 ---
 [For named-project focus, do not add other projects unless the user explicitly asks for global context.]
 ```
+
+### When repo evidence is available — emit an operating brief
+
+If `project_evidence_scan` returned evidence (next moves, human gates, dirty files, do-not-touch), the answer should be an **action router**, not a description. Combine Brain OS memory (focus_get) with the repo evidence and separate *who acts*: what the human must decide vs. what an agent can execute vs. what must not be touched. Still plain language — these are section cues, not rigid headers to copy robotically:
+
+```
+FOCUS NOW
+[The one thing to do, in plain language.]
+
+WHY
+[Why this is the priority — what it unblocks or what breaks if skipped.]
+
+HUMAN NEEDED
+[The 1-3 actions only the user can do — decisions, approvals, gated steps. Pull from detected human gates.]
+
+AGENT-SAFE WORK
+[What an agent can execute now without waiting. Pull from safe parallel work / next moves that aren't gated.]
+
+DO NOT TOUCH
+[Files / phases / projects that would conflict or are gated. Pull from do-not-touch + conflict rules.]
+
+EVIDENCE USED
+[Briefly: STATE.md, recent commits, dirty files, Brain OS decisions — what this brief was grounded on.]
+```
+
+Omit any section that has no content (e.g. no human gate → no HUMAN NEEDED). If `project_evidence_scan` found nothing, fall back to the plain-language priority format above.
 
 ## After output
 

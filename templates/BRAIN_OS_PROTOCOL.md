@@ -20,11 +20,15 @@ If you read pulse files when MCP tools are available, you give the user a degrad
 |---|------|--------------|
 | 1 | `mcp__brain-os__entity_read(entity_id?)` | First call for any project-state question. Omit `entity_id` to list all entities. |
 | 2 | `mcp__brain-os__plan_read(entity_id)` | Get active step + progress for an entity. |
-| 3 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass `entity_id` to scope to one project; omit for global. Use for "what should I work on." |
-| 4 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search when you don't know the entity ID or want cross-decision / pattern / session context. |
-| 5 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** proposing any action that might contradict an active decision. Returns clear / caution / conflict. |
-| 6 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
-| 7 | `mcp__brain-os__entity_update`, `plan_update`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when the skill writes state back. |
+| 3 | `mcp__brain-os__context_resolve(user_message?, files_touched?, explicit_entity_id?)` | Resolve context before `focus_get` / `decision_check` when the target entity is not already known. For "what should I work on" from inside a workspace, call this before `focus_get`. |
+| 4 | `mcp__brain-os__project_evidence_scan(root_path, entity_id?)` | Read-only repo evidence (STATE.md, FLAGS*, HANDOFF*, ROADMAP/PLAN/TODO, git activity, dirty files). Call AFTER `context_resolve` and BEFORE `focus_get` when a workspace path is known, so the focus answer is grounded in repo-native state, not only `.brain` memory. NOT a router — never use it to pick the project. |
+| 5 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass resolved `entity_id` to scope to one project; omit only for explicit global focus or unresolved context. |
+| 6 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search when you don't know the entity ID or want cross-decision / pattern / session context. |
+| 7 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** proposing any action that might contradict an active decision. Returns clear / caution / conflict. |
+| 8 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
+| 9 | `mcp__brain-os__entity_update`, `plan_update`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when the skill writes state back. |
+
+For focus requests, do not call `focus_get` first. The focus pipeline is: `context_resolve` (which project?) → `project_evidence_scan` (what does the repo say now?) → `focus_get` (what does Brain OS memory say?) → combined operating brief. Resolve context first unless the user explicitly says `--global` / `all`.
 
 ---
 

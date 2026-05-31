@@ -84,13 +84,17 @@ Keep the whole exchange to 2-3 messages. Do not over-ask. If they give a short a
 
 | # | Tool | When to call |
 |---|------|--------------|
-| 1 | `mcp__brain-os__entity_read(entity_id?)` | First call for any project-state question. Omit `entity_id` to list all entities. |
+| 1 | `mcp__brain-os__entity_read(entity_id?)` | First call for ordinary project-state questions. Omit `entity_id` to list all entities. |
 | 2 | `mcp__brain-os__plan_read(entity_id)` | Get active step + progress for an entity. |
-| 3 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass `entity_id` to scope to one project; omit for global. Use for "what should I work on." |
-| 4 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search across decisions, patterns, sessions when you don't know the entity ID. |
-| 5 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict. |
-| 6 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
-| 7 | `mcp__brain-os__entity_update`, `plan_set/add/advance`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when writing state back. |
+| 3 | `mcp__brain-os__context_resolve(user_message?, files_touched?, explicit_entity_id?)` | Resolve context before `focus_get` / `decision_check` when the target entity is not already known. For "what should I work on" from inside a workspace, call this before `focus_get`. |
+| 4 | `mcp__brain-os__project_evidence_scan(root_path, entity_id?)` | Read-only repo evidence (STATE.md, FLAGS*, HANDOFF*, ROADMAP/PLAN/TODO, git activity, dirty files). Call AFTER `context_resolve` and BEFORE `focus_get` when a workspace path is known. NOT a router — never use it to pick the project. |
+| 5 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass resolved `entity_id` to scope to one project; omit only for explicit global focus or unresolved context. |
+| 6 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search across decisions, patterns, sessions when you don't know the entity ID. |
+| 7 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict. |
+| 8 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
+| 9 | `mcp__brain-os__entity_update`, `plan_set/add/advance`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when writing state back. |
+
+For focus requests, do not call `focus_get` first. The focus pipeline is: `context_resolve` → `project_evidence_scan` (when a workspace path is known) → `focus_get` → combined operating brief. Resolve context first unless the user explicitly says `--global` / `all`.
 
 Do not name tools in user-facing text. Use plain language: "Checking your projects..." not "Calling `entity_read`...".
 
@@ -175,9 +179,9 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 |---|---|---|
 | `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table |
 | `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card |
-| `focus` | `context_resolve(user_message, files_touched=[client workspace path])` → if resolved, `focus_get(entity_id=<matched>)`; otherwise `focus_get(max_results=3)` | Scoped if the current client-visible workspace maps cleanly to an entity; otherwise global priorities table + do-not-do + staleness alerts. |
+| `focus` | `context_resolve(user_message, files_touched=[client workspace path])` → if resolved, `project_evidence_scan(root_path=workspace, entity_id=<matched>)` → `focus_get(entity_id=<matched>)`; otherwise `focus_get(max_results=3)` | Operating brief (FOCUS NOW / human-needed / agent-safe / do-not-touch / evidence used) when repo evidence exists; otherwise scoped/global priorities table + do-not-do + staleness alerts. |
 | `focus <entity>` | `context_resolve(user_message=<entity>)` → `focus_get(entity_id=<matched>)` | Scoped priority for that entity only. |
-| `focus <constraints>` | `focus_get(constraints)` | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
+| `focus <constraints>` | `context_resolve(user_message, files_touched=[client workspace path])` → if resolved, `project_evidence_scan(root_path=workspace, entity_id=<matched>)` → `focus_get(entity_id=<matched>, constraints)`; otherwise `focus_get(constraints)` global | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
 | `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask before mutating |
 | `retro` | `entity_read()` + `pattern_detect(scope="recent")` + `semantic_recall("last 7 days")` | Weekly retro narrative grouped by entity |
