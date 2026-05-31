@@ -35,7 +35,7 @@ export class EmbeddingsNotConfiguredError extends Error {
 const CONFIG_HINT =
   "Set BRAIN_EMBEDDINGS in your MCP server env. Pick one:\n" +
   '  "env": { "BRAIN_EMBEDDINGS": "local" }    // ~100MB on-device model, no API key\n' +
-  '  "env": { "BRAIN_EMBEDDINGS": "openai" }   // requires OPENAI_API_KEY\n' +
+  '  "env": { "BRAIN_EMBEDDINGS": "openai", "OPENAI_API_KEY": "${OPENAI_API_KEY}" }   // reference the key from your shell env — never paste a raw sk-... value\n' +
   "Then restart your MCP client. Other tools (entity_update, decision_log, etc.) work without embeddings.";
 
 let activeProvider: { name: "local" | "openai"; embed: EmbedFn } | null = null;
@@ -72,6 +72,13 @@ async function initProvider(): Promise<void> {
           return res.data[0].embedding;
         },
       };
+      // Security reminder (stderr only — never touches the JSON-RPC stdout stream).
+      // We can't tell whether the key was pasted inline or referenced from the shell
+      // (both arrive via process.env), so this is a nudge, not a hard check.
+      process.stderr.write(
+        "Brain OS: OpenAI embeddings active. Keep OPENAI_API_KEY out of plaintext config — " +
+          'reference it as "${OPENAI_API_KEY}" in your MCP env, or use BRAIN_EMBEDDINGS=local (no key).\n'
+      );
     } catch (e) {
       activeProvider = null;
       initError = `Failed to initialize OpenAI embeddings: ${e instanceof Error ? e.message : String(e)}`;

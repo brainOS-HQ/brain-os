@@ -73,8 +73,7 @@ export async function getFocus(
         constraints_applied: constraints || null,
       };
     }
-    const relatedIds = new Set(target.related_entities);
-    entities = [target, ...allActiveEntities.filter((e) => relatedIds.has(e.id))];
+    entities = [target];
     scope = target.name;
   } else {
     entities = allActiveEntities;

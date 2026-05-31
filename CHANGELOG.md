@@ -2,6 +2,27 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.6.0] — 2026-05-31
+
+> Minor release: **context-aware focus.** The first version where Brain OS doesn't just store state — it routes context, scans repo evidence, and clears review debt.
+
+### Added
+
+- **`context_resolve`** — deterministic, confidence-scored context router. Resolves which entity the current work belongs to from explicit mention / alias / files / lexical signals; confidence is derived from which signal tier fired, never an LLM guess. Routes known context only — it does not parse messages to classify intent. Adds an optional `aliases` field to entities.
+- **`project_evidence_scan`** — read-only repo evidence adapter. Scans `STATE.md`, `FLAGS*`, `HANDOFF*`, `ROADMAP.md`, `PLAN*.md`, `TODO.md`, `AGENTS.md` plus recent git activity and dirty files, surfacing human gates, next moves, blockers, and do-not-touch as exact lines. Mutates nothing, no LLM.
+- **`decision_review`** — read-only review-debt inbox. Buckets overdue decisions into still-true / changed / archive / needs-evidence with a recommended action for each; proposes only — you confirm and apply via `decision_refresh` / `decision_log`. Auto-detects duplicate-stub decisions (same text + placeholder proof action + self-dated review) and points at the canonical entry.
+- **Context-aware `/focus`** — `/focus` now resolves context first (project mention or client workspace folder) and scopes to that project; `/focus --global` forces the cross-project portfolio view. The focus pipeline is `context_resolve` → `project_evidence_scan` → `focus_get` → operating brief.
+
+### Changed
+
+- Mention resolution uses a specificity tie-break: when multiple entities match, the one matched by a longer / more-specific form wins; equal specificity stays ambiguous and asks. Lets aliases disambiguate entities that share a display name.
+- `entity_update` can now set `aliases`.
+- Documented the focus pipeline across `AGENTS.md`, the protocol template, and the focus command template.
+
+### Security
+
+- Warns against pasting a raw `OPENAI_API_KEY` into plaintext MCP config; steers toward a shell env reference (`"${OPENAI_API_KEY}"`) or local embeddings. The reminder is emitted to stderr only — never the JSON-RPC stdout channel.
+
 ## [0.5.3] — 2026-05-27
 
 > Patch: removes implicit CWD auto-scoping from focus_get, scopes unreviewed decisions, sanitizes checkpoint filenames, adds Glama badge.

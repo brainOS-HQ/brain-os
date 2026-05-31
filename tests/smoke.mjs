@@ -18,13 +18,16 @@ const { setPlan, advancePlan } = await import("../dist/tools/plan-update.js");
 const { refreshDecision } = await import("../dist/tools/decision-refresh.js");
 const { updateEntity } = await import("../dist/tools/entity-update.js");
 const { getFocus } = await import("../dist/tools/focus-get.js");
+const { resolveContext } = await import("../dist/tools/context-resolve.js");
+const { scanProjectEvidence } = await import("../dist/tools/project-evidence-scan.js");
+const { reviewDecisions } = await import("../dist/tools/decision-review.js");
 const { readAuditLog } = await import("../dist/tools/audit-read.js");
 const { semanticRecall, EmbeddingsNotConfiguredError } = await import("../dist/utils/embeddings.js");
 const { calculateStaleness, today } = await import("../dist/utils/staleness.js");
 const { writeJsonFile, readJsonFile, assertSafeId } = await import("../dist/utils/file-store.js");
 const { appendFile, writeFile } = await import("node:fs/promises");
 
-async function seedEntity(id, name) {
+async function seedEntity(id, name, overrides = {}) {
   await writeJsonFile(join(tmpBrain, "entities", `${id}.json`), {
     id,
     name,
@@ -43,6 +46,7 @@ async function seedEntity(id, name) {
     metadata: {},
     created_at: "2026-05-21",
     last_updated: "2026-05-21",
+    ...overrides,
   });
 }
 
@@ -500,4 +504,293 @@ test("focus_get: suppress_default_guidance omits the built-in 'Do not …' lines
     !withoutDefaults.do_not_do.includes(defaultLine),
     "suppress_default_guidance must omit the hardcoded line"
   );
+});
+
+// v0.5.3 regression — explicit project scope must stay strict. Related
+// entities are useful for graph/global views, but leaking them into scoped
+// focus makes agents answer about projects the user did not ask about.
+test("focus_get: explicit entity_id returns only the scoped entity, not related entities", async () => {
+  await seedEntity("ent-focus-main", "Focus Main", {
+    priority: "critical",
+    related_entities: ["ent-focus-related"],
+  });
+  await seedEntity("ent-focus-related", "Focus Related", {
+    priority: "critical",
+    momentum: "high",
+  });
+
+  const result = await getFocus(undefined, 10, { entity_id: "ent-focus-main" });
+
+  assert.equal(result.scope, "Focus Main");
+  assert.deepEqual(
+    result.priorities.map((item) => item.entity_id),
+    ["ent-focus-main"],
+    "scoped focus should not include related entities"
+  );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// context_resolve v1 — deterministic context router.
+// NOTE: this suite shares one tmpBrain across all tests, so the entity set is
+// large by now. Context tests use deliberately unique tokens to avoid
+// cross-test mention/lexical collisions.
+// ──────────────────────────────────────────────────────────────────────────
+
+test("context_resolve: explicit_entity_id is authoritative (confidence 1.0)", async () => {
+  await seedEntity("ctx-explicit", "Ctx Explicit Target");
+  const r = await resolveContext({ explicit_entity_id: "ctx-explicit", user_message: "do whatever" });
+  assert.equal(r.entity_id, "ctx-explicit");
+  assert.equal(r.confidence, 1.0);
+  assert.equal(r.signal, "explicit_entity_id");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: named mention resolves at 0.95, proceed silently", async () => {
+  await seedEntity("ctx-zephyr", "Zephyr Quokka Platform");
+  const r = await resolveContext({ user_message: "rewrite the Zephyr Quokka Platform landing page" });
+  assert.equal(r.entity_id, "ctx-zephyr");
+  assert.equal(r.confidence, 0.95);
+  assert.equal(r.signal, "user_mention");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: named mention requires token boundaries, not substrings", async () => {
+  await seedEntity("ctx-ghost", "Ghost");
+  const r = await resolveContext({ user_message: "fix the ghostwriter onboarding copy" });
+  assert.notEqual(r.signal, "user_mention", "substring match must not count as explicit mention");
+  assert.notEqual(r.entity_id, "ctx-ghost", "ghostwriter must not resolve to Ghost at 0.95");
+});
+
+test("context_resolve: alias match resolves the entity", async () => {
+  await seedEntity("ctx-vermillion", "Internal Billing Reconciler", { aliases: ["vermillion"] });
+  const r = await resolveContext({ user_message: "let's debug vermillion's webhook" });
+  assert.equal(r.entity_id, "ctx-vermillion");
+  assert.equal(r.signal, "user_mention");
+});
+
+test("context_resolve: more specific alias disambiguates shared display names", async () => {
+  await seedEntity("ctx-jinx-voice", "Ctx Jinx", { aliases: ["ctx jinx app", "ctx jinx voice"] });
+  await seedEntity("ctx-jinx-life", "Ctx Jinx", { aliases: ["ctx jinx life", "ctx jinx hackathon"] });
+
+  const app = await resolveContext({ user_message: "work on ctx jinx app" });
+  assert.equal(app.entity_id, "ctx-jinx-voice", "specific app alias should beat the shared display name");
+  assert.equal(app.signal, "user_mention");
+
+  const hackathon = await resolveContext({ user_message: "work on ctx jinx hackathon" });
+  assert.equal(hackathon.entity_id, "ctx-jinx-life", "specific hackathon alias should beat the shared display name");
+  assert.equal(hackathon.signal, "user_mention");
+
+  const bare = await resolveContext({ user_message: "work on Ctx Jinx" });
+  assert.equal(bare.entity_id, null, "bare shared display name should still ask");
+  assert.equal(bare.signal, "user_mention_ambiguous");
+  assert.equal(bare.ask_user, true);
+});
+
+test("context_resolve: explicit mention OVERRIDES files in another repo", async () => {
+  await seedEntity("ctx-landingproj", "Ctx Landing Proj");
+  await seedEntity("ctx-otherrepo", "Ctx Other Repo");
+  const r = await resolveContext({
+    user_message: "rewrite Ctx Landing Proj positioning copy",
+    files_touched: ["/Users/x/code/ctx-otherrepo/src/server.ts"],
+  });
+  assert.equal(r.entity_id, "ctx-landingproj", "mention must win over file location");
+  assert.equal(r.signal, "user_mention");
+  assert.ok(
+    r.evidence.some((e) => e.includes("ctx-otherrepo") && /priority/i.test(e)),
+    "should record that files pointed elsewhere but mention took priority"
+  );
+});
+
+test("context_resolve: generic focus request can still use weak file context", async () => {
+  await seedEntity("ctx-folderfocus", "Ctx Folder Focus");
+  const r = await resolveContext({
+    user_message: "what should I focus on today?",
+    files_touched: ["/Users/x/code/ctx-folderfocus"],
+  });
+  assert.equal(r.entity_id, "ctx-folderfocus");
+  assert.equal(r.signal, "files_touched");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: ambiguous mention asks instead of guessing", async () => {
+  await seedEntity("ctx-mango-alpha", "Mango Alpha Service");
+  await seedEntity("ctx-mango-beta", "Mango Beta Service");
+  const r = await resolveContext({ user_message: "compare Mango Alpha Service and Mango Beta Service" });
+  assert.equal(r.entity_id, null, "ambiguous strong-tier match must not resolve to a guess");
+  assert.equal(r.ask_user, true);
+  assert.ok(r.confidence < 0.5);
+  assert.ok(r.candidates.length >= 2, "should list the competing candidates");
+});
+
+test("context_resolve: files_touched resolves at 0.6 when no mention", async () => {
+  await seedEntity("ctx-filesonly", "Ctx Files Only");
+  const r = await resolveContext({ files_touched: ["/repo/ctx-filesonly/index.ts"] });
+  assert.equal(r.entity_id, "ctx-filesonly");
+  assert.equal(r.confidence, 0.6);
+  assert.equal(r.signal, "files_touched");
+  assert.equal(r.ask_user, false);
+});
+
+test("context_resolve: no usable signal → ask_user, no guess", async () => {
+  const r = await resolveContext({ user_message: "xyzzy plugh frobnicate snorgle" });
+  assert.equal(r.entity_id, null);
+  assert.equal(r.ask_user, true);
+  assert.equal(r.confidence, 0);
+});
+
+test("entity_update: can write aliases, and context_resolve then matches them", async () => {
+  // Seeded with no aliases — write them through the tool, not the JSON file.
+  await seedEntity("ctx-quartz", "Quartz Ledger Service");
+
+  // Before: the folder slug "quartz-svc" does not resolve to the entity.
+  const before = await resolveContext({ files_touched: ["/repo/quartz-svc/index.ts"] });
+  assert.notEqual(before.entity_id, "ctx-quartz", "slug should not match before aliases are written");
+
+  // Write aliases through entity_update (the gap being closed).
+  const result = await updateEntity("ctx-quartz", { aliases: ["quartz-svc", "quartz"] });
+  assert.deepEqual(result.entity.aliases, ["quartz-svc", "quartz"], "aliases must persist on the entity");
+  assert.ok(
+    result.changes.some((c) => c.startsWith("aliases:")),
+    "aliases change must be recorded in the audit changes"
+  );
+
+  // Persisted to disk.
+  const onDisk = await readJsonFile(join(tmpBrain, "entities", "ctx-quartz.json"));
+  assert.deepEqual(onDisk.aliases, ["quartz-svc", "quartz"]);
+
+  // After: spoken alias resolves at 0.95, and the folder slug now resolves via files.
+  const spoken = await resolveContext({ user_message: "what's blocking quartz right now" });
+  assert.equal(spoken.entity_id, "ctx-quartz");
+  assert.equal(spoken.signal, "user_mention");
+
+  const byFiles = await resolveContext({ files_touched: ["/repo/quartz-svc/index.ts"] });
+  assert.equal(byFiles.entity_id, "ctx-quartz", "written slug alias must now match files_touched");
+});
+
+test("project_evidence_scan: extracts next move, human gate, dirty file; mutates nothing", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, readdirSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-"));
+
+  writeFileSync(
+    join(repo, "STATE.md"),
+    "# State\n\nEXACT NEXT MOVE: run /gsd:plan-phase 137.9\nProgress: tasks 1+2 complete.\n",
+  );
+  writeFileSync(
+    join(repo, "HANDOFF_2026-05-31.md"),
+    "# Handoff\n\nPhase 165-01 Task 3 is a HUMAN GATE — review corpus bins.\n" +
+      "DO NOT TOUCH eva-brain.js from two sessions.\n" +
+      "137.9 and 137.7 can run in parallel with Phase 165.\n",
+  );
+
+  // git repo with one commit + an untracked (dirty) file
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  g("init", "-q");
+  g("add", "STATE.md", "HANDOFF_2026-05-31.md");
+  g("commit", "-q", "-m", "seed operating state");
+  writeFileSync(join(repo, "scratch.txt"), "uncommitted work\n");
+
+  const repoBefore = readdirSync(repo).sort().join(",");
+  const brainBefore = readdirSync(join(tmpBrain, "entities")).length;
+
+  const r = scanProjectEvidence({ root_path: repo, entity_id: "eva" });
+
+  assert.equal(r.entity_id, "eva");
+  assert.ok(r.detected_next_moves.some((l) => l.includes("137.9")), "should extract the EXACT NEXT MOVE line");
+  assert.ok(r.detected_human_gates.some((l) => /human gate/i.test(l)), "should extract the HUMAN GATE line");
+  assert.ok(r.do_not_touch.some((l) => l.includes("eva-brain.js")), "should extract DO NOT TOUCH");
+  assert.ok(r.safe_parallel_work.some((l) => /parallel/i.test(l)), "should extract the parallel-work line");
+  assert.ok(r.dirty_files.some((f) => f.includes("scratch.txt")), "should report the dirty file");
+  assert.ok(r.recent_git_activity.length >= 1, "should report recent commits");
+  assert.ok(r.current_state_files.includes("STATE.md"), "STATE.md should be listed");
+  assert.ok(
+    r.evidence_used.includes("STATE.md") && r.evidence_used.some((e) => e.startsWith("git log")),
+    "evidence_used should cite both files and git",
+  );
+  assert.equal(r.warnings.length, 0, "clean repo with evidence should produce no warnings");
+
+  // No mutation: repo top-level files and Brain OS entities are unchanged.
+  assert.equal(readdirSync(repo).sort().join(","), repoBefore, "scan must not add/remove repo files");
+  assert.equal(readdirSync(join(tmpBrain, "entities")).length, brainBefore, "scan must not write Brain OS state");
+
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test("project_evidence_scan: empty dir → warning, empty arrays, no crash", async () => {
+  const empty = mkdtempSync(join(tmpdir(), "brain-evscan-empty-"));
+  const r = scanProjectEvidence({ root_path: empty });
+  assert.equal(r.current_state_files.length, 0);
+  assert.equal(r.detected_next_moves.length, 0);
+  assert.equal(r.recent_git_activity.length, 0);
+  assert.ok(r.warnings.length >= 1, "should warn when no evidence files and no git history exist");
+  rmSync(empty, { recursive: true, force: true });
+});
+
+test("decision_review: duplicate stub → archive, pointing at canonical (canonical not surfaced)", async () => {
+  await seedEntity("dr-dup", "DR Dup Test", { priority: "high" });
+  const canonical = await logDecision({
+    entity_id: "dr-dup",
+    decision: "Human approval required before all sends in v1",
+    why: "Trust positioning",
+    alternatives: [{ option: "auto-send", rejected_because: "trust risk" }],
+    proof_action: "Draft generation works and never auto-sends",
+    review_date: "2026-12-31", // future → canonical, not overdue
+  });
+  const stub = await logDecision({
+    entity_id: "dr-dup",
+    decision: "Human approval required before all sends in v1", // same text
+    why: "duplicate logging noise",
+    proof_action: "Review in next session", // placeholder
+    review_date: today(), // self-dated (date == review_date == today) and overdue
+  });
+
+  const r = await reviewDecisions({ entity_id: "dr-dup" });
+  assert.equal(r.groups.archive.length, 1, "only the stub should be archive-bucketed");
+  const item = r.groups.archive[0];
+  assert.equal(item.decision_id, stub.logged.id);
+  assert.equal(item.duplicate_of, canonical.logged.id, "should point at the canonical decision");
+  assert.ok(item.confidence >= 0.9, "duplicate-stub detection is high confidence");
+  const allShown = Object.values(r.groups).flat();
+  assert.ok(!allShown.some((i) => i.decision_id === canonical.logged.id), "future-dated canonical must not appear as review debt");
+});
+
+test("decision_review: overdue decision with no evidence → needs_evidence", async () => {
+  await seedEntity("dr-noev", "DR NoEvidence");
+  const dec = await logDecision({
+    entity_id: "dr-noev",
+    decision: "Target support teams under 20 people",
+    why: "ICP focus",
+    proof_action: "Interview 5 support teams",
+    review_date: "2026-01-01", // overdue
+  });
+  const r = await reviewDecisions({ entity_id: "dr-noev" });
+  assert.equal(r.groups.needs_evidence.length, 1);
+  assert.equal(r.groups.needs_evidence[0].decision_id, dec.logged.id);
+  assert.equal(r.groups.archive.length, 0);
+});
+
+test("decision_review: overdue decision with evidence → still_true; mutates nothing", async () => {
+  await seedEntity("dr-still", "DR StillTrue");
+  const dec = await logDecision({
+    entity_id: "dr-still",
+    decision: "Gmail first — v1 targets Google Workspace only",
+    why: "ship focus",
+    proof_action: "Gmail OAuth works",
+    review_date: "2026-01-01", // overdue
+  });
+  await refreshDecision({ decision_id: dec.logged.id, add_evidence: "Gmail OAuth integration shipped" });
+
+  const decisionsPath = join(tmpBrain, "decisions", "decisions.json");
+  const before = JSON.stringify(await readJsonFile(decisionsPath));
+
+  const r = await reviewDecisions({ entity_id: "dr-still" });
+  assert.equal(r.groups.still_true.length, 1);
+  assert.equal(r.groups.still_true[0].decision_id, dec.logged.id);
+  assert.ok(r.groups.still_true[0].evidence_count >= 1, "should report the appended evidence");
+
+  const after = JSON.stringify(await readJsonFile(decisionsPath));
+  assert.equal(after, before, "decision_review must not mutate decisions.json");
 });

@@ -111,9 +111,11 @@ Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
 | Mode | What it does | Setup |
 |------|--------------|-------|
 | `local` | Downloads a ~100MB on-device model (`Xenova/all-MiniLM-L6-v2`). Runs on your CPU. No data leaves your machine. | Just set `BRAIN_EMBEDDINGS=local`. First call to `semantic_recall` triggers the model download (~30s on good wifi). |
-| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Set both `BRAIN_EMBEDDINGS=openai` and `OPENAI_API_KEY=sk-...` |
+| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Set `BRAIN_EMBEDDINGS=openai`, then reference your key as `"OPENAI_API_KEY": "${OPENAI_API_KEY}"` (see security note below). |
 
 If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with this config snippet. No silent downloads, no surprise API calls.
+
+> **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell (`export OPENAI_API_KEY=sk-...` in `~/.zshrc`) and reference it in the `env` block as `"OPENAI_API_KEY": "${OPENAI_API_KEY}"`. Better yet, use `BRAIN_EMBEDDINGS=local`, which needs no key and keeps all embedding work on your machine.
 
 ## Tools
 
@@ -124,7 +126,10 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 | `decision_log` | Log a strategic decision with reasoning and alternatives |
 | `decision_check` | Check a proposed action against active decisions — returns clear/caution/conflict |
 | `decision_refresh` | Refresh an existing decision: bump review_date, append evidence, change status. Metadata only — does not mutate decision content. |
+| `decision_review` | Review-debt inbox: buckets overdue decisions (still-true / changed / archive / needs-evidence) and recommends an action for each. Read-only — proposes, you confirm. Auto-detects duplicate-stub decisions. |
+| `context_resolve` | Resolve which entity the current work belongs to, from explicit mention / alias / files / lexical signals. Deterministic and confidence-scored — routes known context, never guesses intent. |
 | `focus_get` | Get prioritized recommendations on what to work on |
+| `project_evidence_scan` | Read-only scan of a repo's native operating state (STATE.md, FLAGS, HANDOFF, ROADMAP/PLAN/TODO, git activity, dirty files) for human gates, next moves, and do-not-touch — grounds focus in repo reality. |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |

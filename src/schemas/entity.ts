@@ -10,6 +10,11 @@ export interface PlanStep {
 export interface Entity {
   id: string;
   name: string;
+  // Alternate names/nicknames the user might type for this entity. Used by
+  // context_resolve to match an explicit mention to an entity when the spoken
+  // name differs from `name` or the slugified `id`. Optional — absent on
+  // entities created before context awareness shipped.
+  aliases?: string[];
   type: string;
   status: string;
   mode: "active" | "parked" | "incubating" | "archived";

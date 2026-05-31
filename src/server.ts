@@ -13,6 +13,9 @@ import { readAuditLog } from "./tools/audit-read.js";
 import { setPlan, advancePlan, addPlanSteps, readPlan } from "./tools/plan-update.js";
 import { checkDecision } from "./tools/decision-check.js";
 import { refreshDecision } from "./tools/decision-refresh.js";
+import { resolveContext } from "./tools/context-resolve.js";
+import { scanProjectEvidence } from "./tools/project-evidence-scan.js";
+import { reviewDecisions } from "./tools/decision-review.js";
 import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 
@@ -51,6 +54,21 @@ export function registerTools(server: McpServer) {
   );
 
   server.tool(
+    "context_resolve",
+    "Resolve which entity the current work belongs to, with a derived confidence. Deterministic — matches explicit signals (passed entity, named mention, active mission, files touched) before weak ones (lexical, single-active); never guesses from cwd. Returns entity_id + confidence + ask_user. Call this BEFORE focus_get/decision_check when the target entity is not already known, then pass the returned entity_id into them. Confidence >= 0.80: proceed silently. 0.50-0.79: proceed but say 'I think this is X'. < 0.50 (ask_user true): ask one short question.",
+    {
+      user_message: z.string().optional().describe("What the user said they want to do, verbatim. Strongest inferred signal."),
+      files_touched: z.array(z.string()).optional().describe("Paths being worked on. Matched by exact path segment against entity id/aliases — assists only, never overrides an explicit mention."),
+      explicit_entity_id: z.string().optional().describe("Caller-asserted entity id. Authoritative (confidence 1.0) when it matches a known entity."),
+      active_mission_id: z.string().optional().describe("Entity id of the active approved mission/task, if any."),
+    },
+    async (input) => {
+      const result = await resolveContext(input);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
     "entity_update",
     "Update the operational state of a tracked entity. Use after work is done, a decision is made, a blocker changes, or momentum shifts.",
     {
@@ -67,6 +85,7 @@ export function registerTools(server: McpServer) {
         evidence_of_progress: z.string().optional(),
         open_questions: z.array(z.string()).optional(),
         related_entities: z.array(z.string()).optional(),
+        aliases: z.array(z.string()).optional().describe("Alternate names/nicknames and folder slugs the user might type or work in (e.g. ['brain-os', 'brainos']). Read by context_resolve for entity matching; explicit mentions still outrank these."),
       }).describe("Fields to update"),
     },
     async ({ entity_id, updates }) => {
@@ -130,7 +149,7 @@ export function registerTools(server: McpServer) {
     "focus_get",
     "Determine what to work on right now based on urgency, momentum, leverage, staleness, and dependencies. Returns prioritized recommendations. Pass entity_id to scope focus to a single project.",
     {
-      entity_id: z.string().optional().describe("Scope focus to a single entity. When set, returns focus for that entity plus its related entities. Omit for global cross-project priorities."),
+      entity_id: z.string().optional().describe("Scope focus to a single entity. When set, returns only that entity. Omit for global cross-project priorities."),
       constraints: z.string().optional().describe("Optional: 'only 2 hours', 'low energy', etc."),
       max_results: z.number().optional().describe("Max priorities to return (default 3)"),
       suppress_default_guidance: z
@@ -283,6 +302,33 @@ export function registerTools(server: McpServer) {
     },
     async ({ entity_id }) => {
       const result = await readPlan(entity_id);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "project_evidence_scan",
+    "Read-only scan of a repo's native operating state (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md + recent git activity / dirty files). Returns evidence — human gates, blockers, next moves, do-not-touch, safe parallel work — surfaced as exact lines. Call AFTER context_resolve and BEFORE building a focus answer. Mutates nothing and does no inference: it returns ALL candidate signals; deciding the focus is the agent's job. This is NOT context_resolve — do not use it to pick which project you're in.",
+    {
+      root_path: z.string().describe("Absolute path to the repo/project root to scan."),
+      entity_id: z.string().optional().describe("Optional Brain OS entity this repo maps to (echoed back; does not affect the scan)."),
+    },
+    async ({ root_path, entity_id }) => {
+      const result = scanProjectEvidence({ root_path, entity_id });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "decision_review",
+    "Review-debt inbox: bucket overdue decisions into still_true / changed / archive / needs_evidence with a recommended action for each. READ-ONLY — it proposes and cites reasons but mutates nothing; you confirm, then apply via decision_refresh / decision_log (per dec-051). Auto-detects duplicate-stub decisions (same text + placeholder proof_action + self-dated review) and recommends archiving them at the canonical entry. Ranks by overdue age, entity priority, blockers, and cheap-cleanup value; caps output. 'changed' is not auto-detected (human judgment).",
+    {
+      entity_id: z.string().optional().describe("Scope to one entity. Omit to review all entities' overdue decisions."),
+      limit: z.number().optional().describe("Max decisions to surface (default 5). The inbox is meant to be cleared in small batches, not as a flat list of 30."),
+      include_parked: z.boolean().optional().describe("Include decisions on parked/archived entities (default false)."),
+    },
+    async ({ entity_id, limit, include_parked }) => {
+      const result = await reviewDecisions({ entity_id, limit, include_parked });
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
