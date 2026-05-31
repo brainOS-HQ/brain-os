@@ -126,7 +126,10 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 | `decision_log` | Log a strategic decision with reasoning and alternatives |
 | `decision_check` | Check a proposed action against active decisions — returns clear/caution/conflict |
 | `decision_refresh` | Refresh an existing decision: bump review_date, append evidence, change status. Metadata only — does not mutate decision content. |
+| `decision_review` | Review-debt inbox: buckets overdue decisions (still-true / changed / archive / needs-evidence) and recommends an action for each. Read-only — proposes, you confirm. Auto-detects duplicate-stub decisions. |
+| `context_resolve` | Resolve which entity the current work belongs to, from explicit mention / alias / files / lexical signals. Deterministic and confidence-scored — routes known context, never guesses intent. |
 | `focus_get` | Get prioritized recommendations on what to work on |
+| `project_evidence_scan` | Read-only scan of a repo's native operating state (STATE.md, FLAGS, HANDOFF, ROADMAP/PLAN/TODO, git activity, dirty files) for human gates, next moves, and do-not-touch — grounds focus in repo reality. |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |
