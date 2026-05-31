@@ -80,6 +80,29 @@ function messageMentionsForm(message: string, form: string): boolean {
   return new RegExp(`(^|[^a-z0-9])${escapeRegExp(normalized)}(?=$|[^a-z0-9])`).test(message);
 }
 
+function formSpecificity(form: string): number {
+  const tokens = form.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  // Phrase length is the real disambiguator ("jinx hackathon" beats "jinx").
+  // Equal-length names stay ambiguous; this is a router, not a guesser.
+  return tokens.length;
+}
+
+interface MentionHit {
+  entity: Entity;
+  form: string;
+  specificity: number;
+}
+
+function mentionHits(entities: Entity[], message: string): MentionHit[] {
+  return entities.flatMap((entity) => {
+    const matched = mentionForms(entity)
+      .filter((form) => messageMentionsForm(message, form))
+      .sort((a, b) => formSpecificity(b) - formSpecificity(a));
+    const form = matched[0];
+    return form ? [{ entity, form, specificity: formSpecificity(form) }] : [];
+  });
+}
+
 function isActive(e: Entity): boolean {
   return e.mode === "active" || e.mode === "incubating";
 }
@@ -148,10 +171,10 @@ export async function resolveContext(
 
   // ── TIER 2: explicit user mention (strongest inferred signal) ─────────────
   if (!result && message) {
-    const hits = entities.filter((e) => mentionForms(e).some((form) => messageMentionsForm(message, form)));
+    const hits = mentionHits(entities, message);
     if (hits.length === 1) {
-      const e = hits[0];
-      evidence.push(`User message mentions "${e.name}".`);
+      const e = hits[0].entity;
+      evidence.push(`User message mentions "${e.name}" via "${hits[0].form}".`);
       // Confirmation / contradiction from files — mention OVERRIDES files.
       if (fileMatches.size && !fileMatches.has(e.id)) {
         evidence.push(
@@ -160,19 +183,33 @@ export async function resolveContext(
       }
       result = resolved(e, 0.95, "user_mention", `User mentioned ${e.name} by name.`, evidence);
     } else if (hits.length > 1) {
-      // Ambiguous at a STRONG tier → ask, don't drop to a weaker guess.
-      for (const e of hits) ambiguity.push(`Message also matches "${e.name}".`);
-      result = {
-        entity_id: null,
-        entity_name: null,
-        confidence: 0.4,
-        signal: "user_mention_ambiguous",
-        ask_user: true,
-        reason: `Message names ${hits.length} entities. Which one?`,
-        evidence,
-        ambiguity,
-        candidates: hits.map((e) => ({ entity_id: e.id, name: e.name })),
-      };
+      const ranked = [...hits].sort((a, b) => b.specificity - a.specificity);
+      const top = ranked[0];
+      const tied = ranked.filter((hit) => hit.specificity === top.specificity);
+      if (tied.length === 1) {
+        const e = top.entity;
+        evidence.push(`User message mentions "${e.name}" via the most specific form "${top.form}".`);
+        if (fileMatches.size && !fileMatches.has(e.id)) {
+          evidence.push(
+            `files_touched point at [${[...fileMatches].join(", ")}], but the explicit mention takes priority over file location.`,
+          );
+        }
+        result = resolved(e, 0.95, "user_mention", `User mentioned ${e.name} by a more specific name.`, evidence);
+      } else {
+        // Ambiguous at a STRONG tier → ask, don't drop to a weaker guess.
+        for (const hit of tied) ambiguity.push(`Message also matches "${hit.entity.name}" via "${hit.form}".`);
+        result = {
+          entity_id: null,
+          entity_name: null,
+          confidence: 0.4,
+          signal: "user_mention_ambiguous",
+          ask_user: true,
+          reason: `Message names ${tied.length} entities with equal specificity. Which one?`,
+          evidence,
+          ambiguity,
+          candidates: tied.map((hit) => ({ entity_id: hit.entity.id, name: hit.entity.name })),
+        };
+      }
     }
   }
 

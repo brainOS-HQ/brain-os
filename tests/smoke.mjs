@@ -566,6 +566,24 @@ test("context_resolve: alias match resolves the entity", async () => {
   assert.equal(r.signal, "user_mention");
 });
 
+test("context_resolve: more specific alias disambiguates shared display names", async () => {
+  await seedEntity("ctx-jinx-voice", "Ctx Jinx", { aliases: ["ctx jinx app", "ctx jinx voice"] });
+  await seedEntity("ctx-jinx-life", "Ctx Jinx", { aliases: ["ctx jinx life", "ctx jinx hackathon"] });
+
+  const app = await resolveContext({ user_message: "work on ctx jinx app" });
+  assert.equal(app.entity_id, "ctx-jinx-voice", "specific app alias should beat the shared display name");
+  assert.equal(app.signal, "user_mention");
+
+  const hackathon = await resolveContext({ user_message: "work on ctx jinx hackathon" });
+  assert.equal(hackathon.entity_id, "ctx-jinx-life", "specific hackathon alias should beat the shared display name");
+  assert.equal(hackathon.signal, "user_mention");
+
+  const bare = await resolveContext({ user_message: "work on Ctx Jinx" });
+  assert.equal(bare.entity_id, null, "bare shared display name should still ask");
+  assert.equal(bare.signal, "user_mention_ambiguous");
+  assert.equal(bare.ask_user, true);
+});
+
 test("context_resolve: explicit mention OVERRIDES files in another repo", async () => {
   await seedEntity("ctx-landingproj", "Ctx Landing Proj");
   await seedEntity("ctx-otherrepo", "Ctx Other Repo");
@@ -579,6 +597,17 @@ test("context_resolve: explicit mention OVERRIDES files in another repo", async 
     r.evidence.some((e) => e.includes("ctx-otherrepo") && /priority/i.test(e)),
     "should record that files pointed elsewhere but mention took priority"
   );
+});
+
+test("context_resolve: generic focus request can still use weak file context", async () => {
+  await seedEntity("ctx-folderfocus", "Ctx Folder Focus");
+  const r = await resolveContext({
+    user_message: "what should I focus on today?",
+    files_touched: ["/Users/x/code/ctx-folderfocus"],
+  });
+  assert.equal(r.entity_id, "ctx-folderfocus");
+  assert.equal(r.signal, "files_touched");
+  assert.equal(r.ask_user, false);
 });
 
 test("context_resolve: ambiguous mention asks instead of guessing", async () => {
