@@ -10,6 +10,10 @@
   <a href="https://glama.ai/mcp/servers/brainOS-HQ/brain-os"><img src="https://glama.ai/mcp/servers/brainOS-HQ/brain-os/badges/score.svg" alt="brainOS-HQ/brain-os MCP server" /></a>
 </p>
 
+<p align="center">
+  <strong>Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves.</strong>
+</p>
+
 # Brain OS
 
 **[brainos-hq.com](https://brainos-hq.com)**

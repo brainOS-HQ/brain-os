@@ -22,7 +22,21 @@ This roadmap is the public build plan. The longer product thesis lives in `STRAT
 - [x] **Focus CWD auto-scoping** — `/focus` detects the current project folder and scopes results to the matching entity.
 - [x] **Compact Checkpoint** — `PreCompact` hook saves unconfirmed session state before context compaction. `/wrap` surfaces and confirms checkpoints. Automatic in Claude Code; other MCP clients can use confirmed memory flow directly.
 
-## Now — Launch Readiness
+## Current Release — v0.8.0
+
+Goal: assumption-aware review triggers — Brain OS connects changed project evidence to decision assumptions and surfaces the match in `/reconcile` as a reopening signal, not a violation.
+
+- [ ] Compare `project_evidence_scan` output against active decisions' `invalidate_if` conditions (keyword + semantic match, same facet used in v0.7.0 `decision_check`)
+- [ ] `/reconcile` surfaces matched conditions: decision + its assumptions + the matched trigger — proposes reopening, never auto-supersedes
+- [ ] Deliver through the existing `/reconcile` flow with no new confirmation step
+
+**Acceptance:** given a decision with `invalidate_if = "deployment target changes to simple single-app hosting"`, if `project_evidence_scan` detects Vercel config in a single-service repo, `/reconcile` flags that decision for review and states which condition matched.
+
+## Hotfix Lane
+
+Items that can interrupt any release: critical/high security vulnerabilities, data corruption or loss, broken npm release, tests failing on main, published user-facing behavior broken. Everything else waits for the next release queue.
+
+## Next — Launch Readiness
 
 Goal: a new user can install Brain OS, create useful state, and see one agent respect that state in another client within 10 minutes.
 
@@ -38,12 +52,22 @@ Goal: a new user can install Brain OS, create useful state, and see one agent re
 
 Goal: agents reliably use prior decisions without noisy false stops.
 
-- [ ] **Revisit triggers** — flag decisions when review dates pass or new evidence appears.
 - [ ] **Decision provenance for code** — link decisions to commits/files so agents can explain why code is structured a certain way.
 - [ ] **Drift check** — compare proposed next moves against entity vision, scope, and explicit do-not-build constraints.
 - [ ] **Stale-state warnings** — require refresh/confirmation before acting on old state.
 
 Gate: `decision_check` catches real contradictions, stale decisions surface at the right time, and code-level decisions can be traced back to their reasoning.
+
+## Next — Roadmap Intelligence
+
+Goal: Brain OS classifies ideas into the right planning lane so users never have to manually organize every capture.
+
+- [ ] **`roadmap_classify`** — given an idea + optional entity + urgency signals, returns suggested lane (`hotfix` / `current_release` / `next_release` / `backlog` / `vision`) with confidence and reason; asks for confirmation when uncertain
+- [ ] **`roadmap_add`** — writes a classified item to the right lane for an entity; requires confirmation unless clearly a backlog capture
+- [ ] **`roadmap_read`** — returns the full roadmap state for an entity: vision, release queue, backlog, hotfixes
+- [ ] **Entity roadmap lanes** — each entity carries its own `vision / release_queue / backlog / hotfixes` alongside the global portfolio view
+
+This is the layer that turns roadmap from a markdown file into first-class operational state. Agent proposes the lane; user confirms. Not the other way around.
 
 ## Next — Draft Memory and Cross-Client Checkpoints
 
