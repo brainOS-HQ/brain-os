@@ -1,6 +1,6 @@
 {
   "name": "brain-os",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves. The persistent memory layer that stops agent amnesia.",
   "type": "module",
   "main": "dist/index.js",

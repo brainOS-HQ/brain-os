@@ -45,6 +45,12 @@ export interface DecisionReviewItem {
   evidence_count: number;
   proof_action: string;
   duplicate_of?: string;
+  // The testable frame: the premises behind the decision and the conditions that
+  // would make it false. Surfaced so the human reviewing has them in front of
+  // them rather than re-deriving — turns a timestamped "no" into "still true if
+  // these assumptions hold; revisit if these conditions changed."
+  assumptions?: string[];
+  invalidate_if?: string[];
 }
 
 export interface DecisionReviewInput {
@@ -208,6 +214,8 @@ export async function reviewDecisions(input: DecisionReviewInput): Promise<Decis
       evidence_count: evidenceCount,
       proof_action: d.proof_action,
       ...(duplicate_of ? { duplicate_of } : {}),
+      ...(d.assumptions?.length ? { assumptions: d.assumptions } : {}),
+      ...(d.invalidate_if?.length ? { invalidate_if: d.invalidate_if } : {}),
       _priority: priority,
     });
   }
@@ -220,6 +228,9 @@ export async function reviewDecisions(input: DecisionReviewInput): Promise<Decis
   }
   if (shown.length && !shown.some((i) => i.bucket === "changed")) {
     notes.push('No "changed" items are auto-detected in v1 — deciding a decision no longer holds is human judgment. Move an item there yourself and apply via decision_log(supersedes=[id]).');
+  }
+  if (shown.some((i) => i.invalidate_if?.length)) {
+    notes.push('Some items carry invalidate_if conditions. Test each against current reality: if a condition now holds, the decision\'s premise changed — move it to "changed" and supersede. If the assumptions still hold, refresh with confidence.');
   }
 
   const groups: Record<ReviewBucket, DecisionReviewItem[]> = {

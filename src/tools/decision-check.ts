@@ -17,9 +17,23 @@ interface Conflict {
   conflict_reason: string;
 }
 
+// A proposed action that matches a decision's invalidate_if condition is NOT a
+// conflict — it's a signal that the premise behind the decision may have changed
+// and the decision should be reopened. The decision explicitly anticipated this.
+interface ReviewTrigger {
+  decision_id: string;
+  decision: string;
+  why_it_was_decided: string;
+  assumptions: string[];     // the premises behind the decision — ingredients for the plain-language "we decided X assuming Y" line
+  matched_condition: string; // which invalidate_if condition the action matched
+  also_conflicts: boolean;   // true when this same decision is also a hard conflict
+  reason: string;
+}
+
 interface CheckResult {
   status: "clear" | "conflict" | "caution";
   conflicts: Conflict[];
+  review_triggered: ReviewTrigger[];
   guidance: string;
   embeddings_error?: string;
 }
@@ -60,6 +74,7 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
     return {
       status: "clear",
       conflicts: [],
+      review_triggered: [],
       guidance: "No active decisions to check against. Proceed.",
     };
   }
@@ -74,9 +89,27 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
   const keywordFlags = new Map<string, KeywordFlag>();
   const topicCautions: Conflict[] = [];
 
+  // Invalidation-condition keyword hits, collected independently of the conflict
+  // layers below. A decision can be both a conflict AND a review trigger.
+  type InvalidateFlag = { decision: Decision; condition: string };
+  const invalidateKeywordFlags = new Map<string, InvalidateFlag>();
+
   for (const decision of active) {
     const decisionLower = decision.decision.toLowerCase();
     const whyLower = decision.why.toLowerCase();
+
+    // Invalidation conditions ("what would make this false"). If the proposed
+    // action resembles a condition the decision said should reopen it, flag it —
+    // independent of the conflict detection below (and before any `continue`).
+    for (const condition of decision.invalidate_if || []) {
+      const condWords = condition.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+      const overlap = condWords.filter((w) => containsWord(proposedLower, w));
+      const overlapRatio = condWords.length > 0 ? overlap.length / condWords.length : 0;
+      if (overlapRatio >= 0.5) {
+        invalidateKeywordFlags.set(decision.id, { decision, condition });
+        break;
+      }
+    }
 
     // Layer 1: rejected-alternative word overlap (eligible for conflict promotion)
     let layer1Hit = false;
@@ -129,6 +162,7 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
   let embeddingsError: string | null = null;
   const rejectedHits = new Map<string, number>();
   const chosenHits = new Map<string, number>();
+  const invalidateHits = new Map<string, number>();
 
   try {
     const rejectedMatches = await semanticRecall(input.proposed_action, {
@@ -146,6 +180,14 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
       threshold: 0.5,
     });
     for (const m of chosenMatches) chosenHits.set(m.source_id, m.similarity);
+
+    const invalidateMatches = await semanticRecall(input.proposed_action, {
+      sourceKind: "decision",
+      facet: "invalidate",
+      k: 10,
+      threshold: 0.6,
+    });
+    for (const m of invalidateMatches) invalidateHits.set(m.source_id, m.similarity);
   } catch (e) {
     embeddingsAvailable = false;
     if (!(e instanceof EmbeddingsNotConfiguredError)) {
@@ -224,12 +266,61 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
     });
   }
 
+  // ── Review triggers ────────────────────────────────────────────────────────
+  // A proposed action that matches a decision's invalidate_if condition is the
+  // opposite of a conflict: the decision named this exact situation as a reason
+  // to reopen it. Union the keyword-matched and semantic-matched decisions.
+  const conflictIds = new Set(conflicts.map((c) => c.decision_id));
+  const triggerIds = new Set<string>([...invalidateKeywordFlags.keys(), ...invalidateHits.keys()]);
+  const review_triggered: ReviewTrigger[] = [];
+  for (const decisionId of triggerIds) {
+    const decision = active.find((d) => d.id === decisionId);
+    if (!decision) continue;
+    const keywordFlag = invalidateKeywordFlags.get(decisionId);
+    const sim = invalidateHits.get(decisionId);
+    const also_conflicts = conflictIds.has(decisionId);
+
+    // Prefer the specific keyword-matched condition; semantic-only matches are
+    // decision-level, so show the whole invalidate_if list.
+    const matched_condition =
+      keywordFlag?.condition ?? (decision.invalidate_if || []).join("; ");
+
+    const signal =
+      keywordFlag && sim !== undefined
+        ? `keyword + semantic (${(sim * 100).toFixed(0)}%)`
+        : sim !== undefined
+          ? `semantic (${(sim * 100).toFixed(0)}%)`
+          : "keyword";
+
+    review_triggered.push({
+      decision_id: decision.id,
+      decision: decision.decision,
+      why_it_was_decided: decision.why,
+      assumptions: decision.assumptions ?? [],
+      matched_condition,
+      also_conflicts,
+      reason: also_conflicts
+        ? `This action contradicts the decision, but the decision listed this as an invalidation condition (${signal} match). Treat as a possible decision review, not a blind violation — surface to the user.`
+        : `This action matches an invalidation condition the decision named as a reason to reopen it (${signal} match). The decision's premise may have changed; flag it for review before relying on it.`,
+    });
+  }
+
   let status: CheckResult["status"];
   let guidance: string;
 
   if (conflicts.length > 0) {
     status = "conflict";
+    const anticipated = review_triggered.some((r) => r.also_conflicts);
     guidance = `STOP. This action conflicts with ${conflicts.length} active decision(s). Do not proceed unless the user explicitly asks to revisit the decision. Show them the conflict and ask for confirmation.`;
+    if (anticipated) {
+      guidance += ` Note: ${review_triggered.filter((r) => r.also_conflicts).length} of these decision(s) explicitly listed this situation as an invalidation condition — so this may be a legitimate revisit the decision anticipated, not a blind violation. Frame it to the user as a decision review.`;
+    }
+  } else if (review_triggered.length > 0) {
+    status = "caution";
+    guidance = `Proceed with awareness. This action matches an invalidation condition on ${review_triggered.length} active decision(s) — the premise behind them may have changed. Surface the decision(s) to the user for review before relying on them.`;
+    if (cautions.length > 0) {
+      guidance += ` ${cautions.length} other decision(s) also touch the same topic.`;
+    }
   } else if (cautions.length > 0) {
     status = "caution";
     guidance = `Proceed with awareness. ${cautions.length} active decision(s) touch the same topic. Verify your action is compatible before continuing.`;
@@ -249,6 +340,7 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
       status,
       conflicts_found: conflicts.length,
       cautions_found: cautions.length,
+      review_triggers_found: review_triggered.length,
       embeddings_error: embeddingsError,
     },
   });
@@ -256,6 +348,7 @@ export async function checkDecision(input: CheckInput): Promise<CheckResult> {
   return {
     status,
     conflicts: [...conflicts, ...cautions],
+    review_triggered,
     guidance,
     ...(embeddingsError ? { embeddings_error: embeddingsError } : {}),
   };

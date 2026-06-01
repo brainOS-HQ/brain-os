@@ -18,6 +18,10 @@ interface FocusResult {
   do_not_do: string[];
   staleness_alerts: string[];
   unreviewed_decisions: Array<{ entity_id: string; decision: string; review_date: string }>;
+  // One-line review-debt summary with the user-facing next step. Null when the
+  // review queue is clear. Lets every client render "review due → run /reconcile"
+  // without re-counting unreviewed_decisions themselves.
+  review_debt: { count: number; hint: string } | null;
   constraints_applied: string | null;
 }
 
@@ -60,6 +64,7 @@ export async function getFocus(
           do_not_do: [`${parked.name} is ${parked.mode}${parked.mode_reason ? ` — ${parked.mode_reason}` : ""}`],
           staleness_alerts: [],
           unreviewed_decisions: [],
+          review_debt: null,
           constraints_applied: constraints || null,
         };
       }
@@ -70,6 +75,7 @@ export async function getFocus(
         do_not_do: [],
         staleness_alerts: [],
         unreviewed_decisions: [],
+        review_debt: null,
         constraints_applied: constraints || null,
       };
     }
@@ -196,12 +202,21 @@ export async function getFocus(
       review_date: d.review_date,
     }));
 
+  const review_debt =
+    unreviewed_decisions.length > 0
+      ? {
+          count: unreviewed_decisions.length,
+          hint: `${unreviewed_decisions.length} decision(s) due for review → run /reconcile`,
+        }
+      : null;
+
   return {
     scope,
     priorities,
     do_not_do,
     staleness_alerts,
     unreviewed_decisions,
+    review_debt,
     constraints_applied: constraints || null,
   };
 }

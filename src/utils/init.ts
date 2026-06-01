@@ -17,6 +17,7 @@ const COMMANDS: CommandSpec[] = [
   { template: "brain.md",    rel: "brain.md",            name: "/brain" },
   { template: "focus.md",    rel: "brain/focus.md",      name: "/brain:focus" },
   { template: "decide.md",   rel: "brain/decide.md",     name: "/brain:decide" },
+  { template: "reconcile.md", rel: "brain/reconcile.md", name: "/brain:reconcile" },
   { template: "patterns.md", rel: "brain/patterns.md",   name: "/brain:patterns" },
   { template: "retro.md",    rel: "brain/retro.md",      name: "/brain:retro" },
   { template: "graph.md",    rel: "brain/graph.md",      name: "/brain:graph" },

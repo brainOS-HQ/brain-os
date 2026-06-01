@@ -794,3 +794,119 @@ test("decision_review: overdue decision with evidence → still_true; mutates no
   const after = JSON.stringify(await readJsonFile(decisionsPath));
   assert.equal(after, before, "decision_review must not mutate decisions.json");
 });
+
+test("decision_log: persists assumptions + invalidate_if", async () => {
+  await seedEntity("ent-assume", "Assumptions Test");
+  const r = await logDecision({
+    entity_id: "ent-assume",
+    decision: "Do not auto-send replies in v1",
+    why: "Trust is the activation bottleneck",
+    assumptions: [
+      "Users want human approval before sending",
+      "Model reliability is not yet sufficient for autonomous send",
+    ],
+    invalidate_if: [
+      "Users show sustained trust in autonomous drafts",
+      "Target workflow shifts from external email to internal triage",
+    ],
+    proof_action: "Draft generation works and never auto-sends",
+    review_date: "2026-12-31",
+  });
+  assert.deepEqual(r.logged.assumptions, [
+    "Users want human approval before sending",
+    "Model reliability is not yet sufficient for autonomous send",
+  ]);
+  assert.equal(r.logged.invalidate_if.length, 2);
+});
+
+test("decision_check: action matching invalidate_if → review_triggered (keyword, no embeddings)", async () => {
+  await seedEntity("ent-invtrig", "Invalidate Trigger Test");
+  const dec = await logDecision({
+    entity_id: "ent-invtrig",
+    decision: "Keep replies draft-only in v1",
+    why: "Trust is the activation bottleneck",
+    assumptions: ["Users want human approval before sending"],
+    invalidate_if: ["Users show sustained trust in autonomous drafts"],
+    proof_action: "Drafts never auto-send",
+    review_date: "2026-12-31",
+  });
+  const r = await checkDecision({
+    proposed_action: "Users show sustained trust in autonomous drafts so enable autonomous sending",
+    entity_id: "ent-invtrig",
+  });
+  assert.equal(r.review_triggered.length, 1, "should flag the decision whose invalidate_if condition the action matches");
+  assert.equal(r.review_triggered[0].decision_id, dec.logged.id);
+  assert.equal(r.status, "caution", "a matched invalidation condition should at least caution");
+  assert.ok(r.review_triggered[0].matched_condition.includes("sustained trust"));
+  assert.equal(r.review_triggered[0].also_conflicts, false);
+  assert.deepEqual(
+    r.review_triggered[0].assumptions,
+    ["Users want human approval before sending"],
+    "trigger should carry the decision's assumptions for the plain-language line",
+  );
+});
+
+test("decision_check: unrelated action against a decision with invalidate_if → clear, no triggers", async () => {
+  await seedEntity("ent-invclear", "Invalidate Clear Test");
+  await logDecision({
+    entity_id: "ent-invclear",
+    decision: "Keep replies draft-only in v1",
+    why: "Trust",
+    invalidate_if: ["Users show sustained trust in autonomous drafts"],
+    proof_action: "Drafts never auto-send",
+    review_date: "2026-12-31",
+  });
+  const r = await checkDecision({
+    proposed_action: "Switch the marketing site font to Inter",
+    entity_id: "ent-invclear",
+  });
+  assert.equal(r.review_triggered.length, 0);
+  assert.equal(r.status, "clear");
+});
+
+test("focus_get: overdue decisions surface as review_debt with a /reconcile hint", async () => {
+  await seedEntity("fd-debt", "Focus Debt", { momentum: "high", priority: "high", next_move: "ship it" });
+  await logDecision({
+    entity_id: "fd-debt",
+    decision: "Charge per-seat, not per-org",
+    why: "aligns price with value",
+    proof_action: "3 customers accept per-seat pricing",
+    review_date: "2026-01-01", // overdue
+  });
+  const r = await getFocus(undefined, 3, { entity_id: "fd-debt" });
+  assert.ok(r.review_debt, "review_debt should be present when overdue decisions exist");
+  assert.equal(r.review_debt.count, 1);
+  assert.ok(r.review_debt.hint.includes("/reconcile"), "hint should point at /reconcile");
+});
+
+test("focus_get: no overdue decisions → review_debt is null", async () => {
+  await seedEntity("fd-clean", "Focus Clean", { momentum: "high", priority: "high", next_move: "ship it" });
+  await logDecision({
+    entity_id: "fd-clean",
+    decision: "Use Postgres",
+    why: "team knows it",
+    proof_action: "schema migrated",
+    review_date: "2099-01-01", // future
+  });
+  const r = await getFocus(undefined, 3, { entity_id: "fd-clean" });
+  assert.equal(r.review_debt, null);
+});
+
+test("decision_review: surfaces assumptions + invalidate_if and prompts to test conditions", async () => {
+  await seedEntity("dr-frame", "DR Frame");
+  const dec = await logDecision({
+    entity_id: "dr-frame",
+    decision: "Target support teams under 20 people",
+    why: "ICP focus",
+    assumptions: ["Small teams feel the pain most"],
+    invalidate_if: ["Enterprise inbound exceeds SMB demand"],
+    proof_action: "Interview 5 teams",
+    review_date: "2026-01-01", // overdue
+  });
+  const r = await reviewDecisions({ entity_id: "dr-frame" });
+  const item = Object.values(r.groups).flat().find((i) => i.decision_id === dec.logged.id);
+  assert.ok(item, "decision should surface as review debt");
+  assert.deepEqual(item.assumptions, ["Small teams feel the pain most"]);
+  assert.deepEqual(item.invalidate_if, ["Enterprise inbound exceeds SMB demand"]);
+  assert.ok(r.notes.some((n) => n.includes("invalidate_if")), "should prompt the reviewer to test invalidation conditions");
+});

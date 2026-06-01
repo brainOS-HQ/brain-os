@@ -2,6 +2,30 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.7.0] — 2026-06-01
+
+> Minor release: **smarter decision review.** Decisions now carry the premises behind them and the conditions that should reopen them — so the system can reason about *when* a past decision is still valid, not just *that* it was made. Plus `/reconcile`, the user-facing loop that clears the review backlog.
+
+### Added
+
+- **`assumptions` + `invalidate_if` on decisions** — `decision_log` now captures the premises that make a decision true (`assumptions`) and the condition-based triggers that should reopen it (`invalidate_if`). This is a second review axis alongside `review_date`: a *time* trigger says "revisit on this date," a *condition* trigger says "revisit when this becomes true." Both fields are optional and backward-compatible.
+- **`review_triggered` in `decision_check`** — a proposed action that matches a decision's `invalidate_if` condition is the opposite of a conflict: the decision named that situation as a reason to reopen it. `decision_check` now returns a `review_triggered` list (keyword + semantic, via a new `invalidate` embedding facet) carrying the decision, its assumptions, and the matched condition. A decision flagged as *both* a conflict and a review trigger is the revisit it anticipated — surfaced as a decision review, not a blind violation.
+- **`/reconcile`** — the user-facing loop on top of `decision_review`. Walks the decisions due for review and, for each, decides together: reaffirm / update / archive / supersede. Plain language by default; `--details` (aliases `--debug`, `--system`) adds a system-detail block per item. Read-only until the user confirms each call (dec-051).
+- **`review_debt` on `focus_get`** — `focus_get` now returns a one-line review-debt summary (`{ count, hint }`) that points at `/reconcile`, so every client can surface "N decisions due for review → run /reconcile" without re-counting.
+
+### Changed
+
+- **`decision_review`** surfaces each item's `assumptions` and `invalidate_if`, and notes when conditions should be tested — turning a timestamped "no" into a testable frame the reviewer can act on.
+- **Output convention** (AGENTS.md): decision-review surfaces stay plain-language by default; the structured system-detail block renders only on request. Documented as a `/reconcile`-scoped convention, not a product-wide style shift.
+
+### Fixed
+
+- `src/index.ts` version constant drifted to `0.6.0` during the `0.6.1` bump (which was version-only, no CHANGELOG entry); realigned to the package version.
+
+## [0.6.1] — 2026-06-01
+
+> Version-only release (package metadata). No functional changes.
+
 ## [0.6.0] — 2026-05-31
 
 > Minor release: **context-aware focus.** The first version where Brain OS doesn't just store state — it routes context, scans repo evidence, and clears review debt.

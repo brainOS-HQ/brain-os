@@ -96,7 +96,7 @@ export function registerTools(server: McpServer) {
 
   server.tool(
     "decision_log",
-    "Log a strategic decision so it persists across sessions. Every decision needs a reason, alternatives, and a proof action.",
+    "Log a strategic decision so it persists across sessions. Every decision needs a reason, alternatives, and a proof action. Optionally capture the assumptions that make it true and the invalidate_if conditions that should reopen it — these turn a timestamped 'no' into a testable frame the system can reason about later.",
     {
       entity_id: z.string().describe("Entity this decision applies to"),
       decision: z.string().describe("What was decided"),
@@ -107,6 +107,8 @@ export function registerTools(server: McpServer) {
         rejected_because: z.string(),
       })).optional().describe("Options considered"),
       chosen_direction: z.string().optional(),
+      assumptions: z.array(z.string()).optional().describe("The premises that make this decision true — e.g. ['users want human approval before sending', 'model reliability not yet sufficient for autonomous send']. If these still hold, the decision likely still holds."),
+      invalidate_if: z.array(z.string()).optional().describe("Condition-based review triggers ('what would make this false') — e.g. ['users show sustained trust in autonomous drafts', 'target workflow shifts from external email to internal triage']. Distinct from review_date (a time trigger): decision_check matches proposed actions against these to flag the decision for review rather than enforcing it blindly."),
       proof_action: z.string().describe("One action that validates this decision"),
       review_date: z.string().describe("YYYY-MM-DD — when to revisit"),
       supersedes: z.array(z.string()).optional().describe("Decision IDs this new decision replaces (e.g. ['dec-007']). Only the IDs you explicitly pass will be marked superseded — there is no auto-deduction from type. Each target must belong to the same entity_id."),
@@ -119,7 +121,7 @@ export function registerTools(server: McpServer) {
 
   server.tool(
     "decision_check",
-    "Check a proposed action against all active decisions. Returns 'clear', 'caution', or 'conflict'. Call this BEFORE taking actions that might contradict prior decisions. If status is 'conflict', do NOT proceed without explicit user confirmation to revisit the decision.",
+    "Check a proposed action against all active decisions. Returns 'clear', 'caution', or 'conflict', plus a `review_triggered` list. Call this BEFORE taking actions that might contradict prior decisions. If status is 'conflict', do NOT proceed without explicit user confirmation to revisit the decision. `review_triggered` is the opposite signal: the action matches an invalidate_if condition a decision named as a reason to reopen it — surface those decisions to the user for review rather than enforcing them. A decision can be both a conflict and a review trigger (the conflict it anticipated); when so, frame it as a decision review, not a blind violation.",
     {
       proposed_action: z.string().describe("What you're about to do — describe the action clearly"),
       entity_id: z.string().optional().describe("Check against decisions for a specific entity. Omit to check all."),

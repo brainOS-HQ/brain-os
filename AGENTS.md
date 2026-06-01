@@ -32,7 +32,7 @@ If you read source code as your first action on a state question, you are in gen
 | 4 | `mcp__brain-os__project_evidence_scan(root_path, entity_id?)` | Read-only repo evidence (STATE.md, FLAGS*, HANDOFF*, ROADMAP/PLAN/TODO, git activity, dirty files). Call AFTER `context_resolve` and BEFORE `focus_get` when a workspace path is known. NOT a router — never use it to pick the project. |
 | 5 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass resolved `entity_id` to scope to one project; omit only for explicit global focus or unresolved context. |
 | 6 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search when you don't know the entity ID or want cross-decision / pattern / session context. |
-| 7 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict. |
+| 7 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict, plus `review_triggered` — decisions whose `invalidate_if` condition the action matches (premise may have changed; surface for review, don't enforce). |
 | 8 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
 | 9 | `mcp__brain-os__entity_update`, `plan_update`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when writing state back. |
 
@@ -44,7 +44,9 @@ Name the tool in user-facing text when you call it (e.g., "Calling `entity_read`
 
 ## Mutation safety
 
-Before any mutating call (`decision_log`, `entity_update`, `plan_update`, `decision_refresh`), call `decision_check` with a short description of the proposed action. If status is `conflict`, do NOT proceed without explicit user confirmation. If `caution`, surface the relevant active decision and ask.
+Before any mutating call (`decision_log`, `entity_update`, `plan_update`, `decision_refresh`), call `decision_check` with a short description of the proposed action. If status is `conflict`, do NOT proceed without explicit user confirmation. If `caution`, surface the relevant active decision and ask. If `review_triggered` is non-empty, the action matched an `invalidate_if` condition a decision named as a reason to reopen it — surface that decision to the user as a possible review (its premise may have changed); a decision flagged as *both* a conflict and a review trigger is the revisit it anticipated, so frame it as a decision review rather than a blind violation.
+
+When logging a strategic decision, capture `assumptions` (the premises that make it true) and `invalidate_if` (the conditions that should reopen it) alongside `why`. These turn a timestamped "no" into a testable frame: if the assumptions still hold the decision likely still holds, and `decision_check` can detect when a proposed action matches an invalidation condition.
 
 Known v0.4.1 bugs (do not work around silently — surface them):
 
@@ -106,6 +108,28 @@ Use the fixed format from `/brain <entity>`:
 
 After a successful write, return the resulting record's key fields (`id`, `date`, summary) in one short paragraph. Do not paraphrase the entire object.
 
+### `decision_check` results — plain language by default, machinery on request
+
+The house style is plain language (no field names, no JSON, MCP tools unnamed). `decision_check` output follows it: `clear` with nothing flagged → say so in one line and proceed. When there are `conflicts` or `review_triggered` items, lead with a **human-language line** composed from the item's fields — `decision` (what was decided), `assumptions` (the premise), and the user's current ask:
+
+```
+Quick check: we decided "local-only storage" assuming single-machine use.
+Since you're asking about laptop + desktop, that decision may need an update.
+```
+
+For a `conflict`, the front line names what it contradicts and asks before proceeding. If an item is `also_conflicts: true` (a conflict the decision anticipated as a revisit), frame it as a decision review, not a blockage. Keep it to one or two sentences.
+
+Only show the **system-detail block** when the user asks for it ("show details", "show the machinery") or passes a verbose/`--details` arg. Then expose the structured reason beneath the plain line:
+
+```
+System detail:
+review_triggered = true
+trigger = invalidate_if: "user asks to sync across machines"
+action = reopen decision for review
+```
+
+This keeps users in plain language and gives builders the machinery on demand — never both unprompted.
+
 ---
 
 ## Terseness
@@ -142,6 +166,7 @@ Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and
 | `focus --global` or `focus all` | `focus_get(max_results=3)` | Force global priorities even when inside a project folder. |
 | `focus <constraints>` | Obtain the client-visible workspace path, then `context_resolve(user_message, files_touched=[client workspace path])`; if resolved → `project_evidence_scan(root_path=workspace, entity_id=<matched>)` → `focus_get(entity_id=<matched>, constraints)`. Otherwise → `focus_get(constraints)` global. | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
 | `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
+| `reconcile` or `reconcile <entity>` | `decision_review(entity_id?)` → walk overdue decisions → apply via `decision_refresh` / `decision_log(supersedes=[…])` on confirmation | Plain-language review of each due decision (reaffirm / update / archive / supersede). `reconcile --details` (aliases `--debug`, `--system`) also shows the system-detail block per item. |
 | `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask for confirmation before mutating |
 | `retro` | `entity_read()` + `pattern_detect(scope="recent")` + `semantic_recall("last 7 days")` | Weekly retro narrative grouped by entity |
 | `patterns` | `pattern_detect()` | Active patterns + new patterns + risk lines |

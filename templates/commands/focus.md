@@ -82,8 +82,8 @@ Your top priority right now is **[PROJECT NAME]**.
 [If staleness alerts exist for the FOCUSED project:]
 **Heads up:** this project hasn't been touched in [N] days. Either ship something or park it.
 
-[If unreviewed decisions exist for the FOCUSED project:]
-**Decision review due:** "[decision text]" — reaffirm, update, or archive it.
+[If unreviewed decisions exist for the FOCUSED project — focus_get returns this as `review_debt`:]
+**Decision review due:** [N] decision(s) past their review date → run `/reconcile` to reaffirm, update, or archive them.
 
 ---
 [For named-project focus, do not add other projects unless the user explicitly asks for global context.]

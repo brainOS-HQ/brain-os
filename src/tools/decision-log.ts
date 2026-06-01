@@ -13,6 +13,8 @@ interface DecisionInput {
   why: string;
   alternatives?: Array<{ option: string; rejected_because: string }>;
   chosen_direction?: string;
+  assumptions?: string[];
+  invalidate_if?: string[];
   proof_action: string;
   review_date: string;
   supersedes?: string[];
@@ -62,6 +64,8 @@ export async function logDecision(input: DecisionInput): Promise<{
     why: input.why,
     alternatives: input.alternatives,
     chosen_direction: input.chosen_direction,
+    assumptions: input.assumptions,
+    invalidate_if: input.invalidate_if,
     proof_action: input.proof_action,
     review_date: input.review_date,
     status: "active",

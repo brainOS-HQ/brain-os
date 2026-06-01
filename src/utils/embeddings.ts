@@ -7,7 +7,7 @@ interface StoredEmbedding {
   id: string;
   source_kind: "entity" | "decision" | "pattern" | "session";
   source_id: string;
-  facet?: "chosen" | "rejected";
+  facet?: "chosen" | "rejected" | "invalidate";
   content: string;
   vector: number[];
   provider: "local" | "openai";
@@ -343,6 +343,15 @@ export async function embedDecision(decisionId: string, decision: Record<string,
   if (alternatives?.length) {
     const rejectedText = alternatives.map((a) => `${a.option}: ${a.rejected_because}`).join(" | ");
     await embedAndStore("decision", decisionId, rejectedText, "rejected");
+  }
+
+  // Invalidation conditions ("what would make this false"). decision_check
+  // matches proposed actions against this facet to nominate the decision for
+  // review — the opposite of a rejected-alternative conflict.
+  const invalidateIf = decision.invalidate_if as string[] | undefined;
+  if (invalidateIf?.length) {
+    const invalidateText = invalidateIf.join(" | ");
+    await embedAndStore("decision", decisionId, invalidateText, "invalidate");
   }
 }
 
