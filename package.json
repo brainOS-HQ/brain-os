@@ -1,7 +1,7 @@
 {
   "name": "brain-os",
   "version": "0.6.0",
-  "description": "MCP server for operational state across AI agents. Decisions, plans, blockers, and project state that survive across sessions.",
+  "description": "Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves. The persistent memory layer that stops agent amnesia.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -23,14 +23,34 @@
     "metrics": "node scripts/fetch-metrics.mjs"
   },
   "keywords": [
+    "brain os",
     "mcp",
-    "ai-state",
-    "ai-agents",
-    "operational-state",
-    "model-context-protocol"
+    "model-context-protocol",
+    "mcp server",
+    "local-first mcp server",
+    "persistent memory layer",
+    "operational memory",
+    "operational state for agents",
+    "project memory",
+    "project state",
+    "agent memory",
+    "memory that stops agent amnesia",
+    "persistent memory for ai",
+    "ai agents",
+    "claude code",
+    "cursor",
+    "local-first",
+    "developer tools"
   ],
   "author": "Tasha Amanda",
   "homepage": "https://brainos-hq.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brainOS-HQ/brain-os.git"
+  },
+  "bugs": {
+    "url": "https://github.com/brainOS-HQ/brain-os/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
