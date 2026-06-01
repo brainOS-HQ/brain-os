@@ -30,12 +30,13 @@ Otherwise you have grouped items. Each carries: the decision, why it was decided
 
 ## Step 2: Walk each item — plain language first
 
-Go bucket by bucket, highest-value first (`archive` cleanups and `changed` items before routine refreshes). For each decision, lead with a **human-language frame** built from its own fields — what was decided, the assumption behind it, and whether reality still matches:
+Go bucket by bucket, highest-value first (`archive` cleanups and `changed` items before routine refreshes). For each decision, lead with a **human-language frame** built from its own fields — what was decided, the assumption behind it, and whether reality still matches — then add **one light technical line** naming the concrete signal (the matched condition, the version, the bucket in plain terms). This is the default for `/reconcile` (the decision-review tier of dec-mpungjpq-1b47): human-first, but with the one technical line a developer needs to trust *why* it surfaced. Not a field dump — that stays behind `--details`.
 
 ```
 We decided "local-only storage" assuming single-machine use.
 That review came due 12 days ago. Does single-machine use still hold,
 or are you syncing across devices now?
+Matched condition: invalidate_if = "user asks to sync across machines"
 ```
 
 Then give the recommendation in plain words, mapped from the bucket:
@@ -53,9 +54,9 @@ Ask for the call. One decision at a time, or batch a few if the user wants to mo
 
 For each confirmed call, use the matching tool from the sequence above. After applying, state the result in one plain line ("Reaffirmed — next review in three months." / "Archived the duplicate." / "Logged the new direction; the old one is superseded.").
 
-## Step 4 (only with `--details`): show the machinery
+## Step 4 (only with `--details`): show the full machinery
 
-If the user passed `--details` / `--debug` / `--system`, append a **System detail** block beneath each item's plain frame. This is the builder/debug layer — show the structured reason, not a JSON dump:
+The default already carries one light technical line per item (Step 2). The `--details` / `--debug` / `--system` flag is the third tier: append the **full System detail** block beneath each item's frame — the complete structured reason, not a JSON dump:
 
 ```
 System detail:
@@ -67,7 +68,7 @@ confidence = 0.6
 action = supersede via decision_log
 ```
 
-Without the flag, never show field names, bucket names, or tool names — keep it human.
+Without the flag, keep it to the human frame + the single technical line — never dump the full block of fields, tool names, or confidence scores.
 
 ## Output
 
@@ -91,7 +92,7 @@ If items were left open, name them in one plain line each so the user knows what
 
 - `decision_review` is read-only. Nothing changes until the user confirms each call (dec-051).
 - Never archive or supersede a decision without an explicit yes.
-- Plain language by default. The `System detail` block appears only with `--details` / `--debug` / `--system`.
+- Three output tiers (dec-mpungjpq-1b47): human frame + one light technical line by default; the full `System detail` block only with `--details` / `--debug` / `--system`. Never all-plain (strips the developer signal), never a full field dump unprompted.
 - Don't re-litigate decisions with standing evidence — reaffirm and move on.
 - A decision with no proof action and no evidence isn't "still true" by default — it's unproven. Say so.
 - MCP tools are used internally but never named in user-facing output (unless `--details`).

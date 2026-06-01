@@ -108,27 +108,31 @@ Use the fixed format from `/brain <entity>`:
 
 After a successful write, return the resulting record's key fields (`id`, `date`, summary) in one short paragraph. Do not paraphrase the entire object.
 
-### `decision_check` results — plain language by default, machinery on request
+### `decision_check` / `/reconcile` results — three output tiers (dec-052 + dec-mpungjpq-1b47)
 
-The house style is plain language (no field names, no JSON, MCP tools unnamed). `decision_check` output follows it: `clear` with nothing flagged → say so in one line and proceed. When there are `conflicts` or `review_triggered` items, lead with a **human-language line** composed from the item's fields — `decision` (what was decided), `assumptions` (the premise), and the user's current ask:
+General output stays human-first with no jargon (dec-052 governs every tool). Decision-review surfaces — `decision_check` review-trigger rendering and `/reconcile` — are a **scoped exception** (dec-mpungjpq-1b47): they stay human-first but keep **one light technical line** inline, because their job is helping a developer judge a decision, and seeing the machinery that fired builds trust. Full machinery still hides behind a flag. Three tiers:
+
+1. **Default (human first)** — `clear` with nothing flagged → say so in one line and proceed. When there are `conflicts` or `review_triggered` items, lead with a plain-language line composed from the item's fields (`decision`, `assumptions`, the user's current ask). For a `conflict`, name what it contradicts and ask before proceeding; if `also_conflicts: true` (a conflict the decision anticipated as a revisit), frame it as a decision review, not a blockage.
+
+2. **Decision-review (human first + one light technical line)** — beneath the plain line, add a single inline line naming the concrete signal — the matched condition, the version, the concept term. Not a field dump. This tier applies to `/reconcile` and `decision_check` review-trigger output only; `/focus`, `/decide`, `/wrap`, `/brain` stay tier 1.
 
 ```
 Quick check: we decided "local-only storage" assuming single-machine use.
 Since you're asking about laptop + desktop, that decision may need an update.
+Matched condition: invalidate_if = "user asks to sync across machines"
 ```
 
-For a `conflict`, the front line names what it contradicts and asks before proceeding. If an item is `also_conflicts: true` (a conflict the decision anticipated as a revisit), frame it as a decision review, not a blockage. Keep it to one or two sentences.
-
-Only show the **system-detail block** when the user asks for it ("show details", "show the machinery") or passes a verbose/`--details` arg. Then expose the structured reason beneath the plain line:
+3. **Full machinery (only on `--details` / `--debug` / `--system`, or "show the machinery")** — the complete structured reason:
 
 ```
 System detail:
 review_triggered = true
 trigger = invalidate_if: "user asks to sync across machines"
+matched_condition = "user asks to sync across machines"
 action = reopen decision for review
 ```
 
-This keeps users in plain language and gives builders the machinery on demand — never both unprompted.
+Never dump the full block unprompted; never strip the one light technical line from decision-review output just to sound human.
 
 ---
 
