@@ -1,0 +1,18 @@
+[
+  {
+    "id": "pat-001",
+    "first_detected": "2026-04-25",
+    "name": "Marketing blocked by product decisions",
+    "entities_affected": ["marketing-site", "saas-mvp"],
+    "evidence": [
+      "Marketing site pricing page blocked for 20 days waiting on pricing decision",
+      "Blog content can't describe features that aren't finalized yet",
+      "Marketing momentum dropped from medium to low while product stayed medium"
+    ],
+    "interpretation": "Product decisions are blocking marketing progress. The pricing decision needs to be made to unblock 2 entities at once.",
+    "risk": "Marketing site goes fully stale. Launch happens with no marketing presence.",
+    "recommendation": "Make the pricing decision this week — even a temporary one — to unblock the marketing site.",
+    "status": "active",
+    "last_confirmed": "2026-04-28"
+  }
+]

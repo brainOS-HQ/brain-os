@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Brain OS Decision",
+  "description": "A strategic decision that persists across sessions — prevents reopening settled questions",
+  "type": "object",
+  "required": ["id", "date", "entity_id", "decision", "why", "proof_action", "review_date", "status"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique decision ID, auto-generated"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date the decision was made"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "Entity this decision applies to"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["product_direction", "architecture", "scope", "priority", "kill_park", "monetization", "brand"],
+      "description": "Category of decision"
+    },
+    "decision": {
+      "type": "string",
+      "description": "What was decided — one clear sentence"
+    },
+    "why": {
+      "type": "string",
+      "description": "The real reason — constraint, insight, or principle"
+    },
+    "alternatives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "option": { "type": "string" },
+          "rejected_because": { "type": "string" }
+        },
+        "required": ["option", "rejected_because"]
+      },
+      "description": "Options that were considered and why they were rejected"
+    },
+    "chosen_direction": {
+      "type": "string",
+      "description": "Which option was chosen and why in one sentence"
+    },
+    "proof_action": {
+      "type": "string",
+      "description": "One concrete action that validates this decision"
+    },
+    "review_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When to revisit this decision"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "superseded", "archived"],
+      "description": "active = current, superseded = replaced by newer decision, archived = no longer relevant"
+    },
+    "superseded_by": {
+      "type": ["string", "null"],
+      "description": "ID of the decision that replaced this one, if superseded"
+    }
+  }
+}

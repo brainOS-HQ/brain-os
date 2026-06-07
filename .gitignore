@@ -1,0 +1,37 @@
+node_modules/
+dist/
+.brain/
+.brain-*/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+YC_APPLICATION_S26.md
+STRATEGY.md
+codebase-map.md
+drafts/
+STATE.md
+HANDOFF_*.md
+.privacy-denylist
+.codex/
+.vscode/
+.claude/
+.cursor/
+.zed/
+.windsurfrules
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
+
+# Editor
+.vscode-test

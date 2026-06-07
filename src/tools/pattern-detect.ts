@@ -1,0 +1,104 @@
+import { Entity } from "../schemas/entity.js";
+import { Decision } from "../schemas/decision.js";
+import { Pattern } from "../schemas/pattern.js";
+import { calculateStaleness } from "../utils/staleness.js";
+import type { ToolContext } from "../storage/adapter.js";
+
+interface DetectedPattern {
+  name: string;
+  entities_affected: string[];
+  evidence: string[];
+  interpretation: string;
+  risk: string;
+  recommendation: string;
+  is_new: boolean;
+}
+
+interface PatternResult {
+  detected: DetectedPattern[];
+  existing_patterns: Array<{ name: string; status: string; still_valid: boolean }>;
+  summary: string;
+}
+
+export async function detectPatterns(ctx: ToolContext, scope?: string): Promise<PatternResult> {
+  const entities = await ctx.storage.listEntities();
+
+  const allDecisions: Decision[] = await ctx.storage.getDecisions();
+
+  const existingPatterns = await ctx.storage.getPatterns();
+
+  const detected: DetectedPattern[] = [];
+
+  // Pattern: Shared blockers
+  const blockerMap = new Map<string, string[]>();
+  for (const e of entities) {
+    if (e.blocked && e.mode === "active") {
+      const blockerKey = e.blocked.toLowerCase().trim();
+      if (!blockerMap.has(blockerKey)) blockerMap.set(blockerKey, []);
+      blockerMap.get(blockerKey)!.push(e.id);
+    }
+  }
+  for (const [blocker, entityIds] of blockerMap) {
+    if (entityIds.length > 1) {
+      detected.push({
+        name: "Shared blocker across entities",
+        entities_affected: entityIds,
+        evidence: [`Same blocker in ${entityIds.length} entities: "${blocker}"`],
+        interpretation: "Multiple entities are stuck on the same problem. Solving it once unblocks all of them.",
+        risk: "Each entity treats this as separate, wasting effort on duplicate unblocking.",
+        recommendation: `Resolve the shared blocker "${blocker}" once for all affected entities.`,
+        is_new: true,
+      });
+    }
+  }
+
+  // Pattern: Active but stalled (fake progress)
+  const fakeActive = entities.filter(
+    (e) => e.mode === "active" && e.momentum === "stalled" && !e.blocked
+  );
+  if (fakeActive.length > 0) {
+    detected.push({
+      name: "Fake-active entities",
+      entities_affected: fakeActive.map((e) => e.id),
+      evidence: fakeActive.map((e) => `${e.name}: mode=active, momentum=stalled, no blocker`),
+      interpretation: "These entities are marked active but not actually moving. No blocker is listed, so the real issue is attention or priority.",
+      risk: "Creates illusion of progress. Mental load without output.",
+      recommendation: "For each: either ship something this week or explicitly park it.",
+      is_new: true,
+    });
+  }
+
+  // Pattern: Stale active entities
+  const staleActive = entities.filter((e) => {
+    if (e.mode !== "active") return false;
+    const s = calculateStaleness(e.last_updated);
+    return s.level === "stale" || s.level === "dormant";
+  });
+  if (staleActive.length > 0) {
+    detected.push({
+      name: "Stale active entities",
+      entities_affected: staleActive.map((e) => e.id),
+      evidence: staleActive.map((e) => {
+        const s = calculateStaleness(e.last_updated);
+        return `${e.name}: last updated ${e.last_updated} (${s.days} days ago)`;
+      }),
+      interpretation: "Active entities that haven't been touched in weeks. Either work is happening without updates, or these are quietly abandoned.",
+      risk: "Context decays. Decisions get forgotten. Restarting becomes harder the longer they sit.",
+      recommendation: "Update each pulse or change mode to parked.",
+      is_new: true,
+    });
+  }
+
+  // Check existing patterns
+  const existing_patterns = existingPatterns.map((p) => {
+    const affectedEntities = entities.filter((e) => p.entities_affected.includes(e.id));
+    const still_valid = affectedEntities.length > 0;
+    return { name: p.name, status: p.status, still_valid };
+  });
+
+  const totalEntities = entities.length;
+  const activeCount = entities.filter((e) => e.mode === "active").length;
+  const summary = `Scanned ${totalEntities} entities (${activeCount} active). Found ${detected.length} patterns. ${existingPatterns.length} existing patterns reviewed.`;
+
+  return { detected, existing_patterns, summary };
+}

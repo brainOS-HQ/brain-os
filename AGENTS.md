@@ -1,0 +1,214 @@
+# AGENTS.md
+
+Agent operating instructions for the Brain OS repository.
+
+This file is the **canonical** source of truth for how AI agents (Claude Code, GitHub Copilot, Cursor, Zed, Windsurf, Codex, any MCP-compatible client) should behave when working in this repo. Tool-specific files (`CLAUDE.md`, `.github/copilot-instructions.md`, `.cursor/rules/brain-os.mdc`) are thin pointers to this document.
+
+---
+
+## Context
+
+This repo IS Brain OS — an MCP server for persistent operational state across AI agents. State lives in `.brain/`. The MCP server is built from `src/`, published to npm as `brain-os`, and exposes tools prefixed `mcp__brain-os__*` when connected as a client.
+
+When asked about project state, priorities, decisions, plans, blockers, or focus, you are answering questions about an **operating product**, not a codebase. Use the MCP tools. Do not grep source code.
+
+---
+
+## The hard rule
+
+For ANY question about project state, priorities, decisions, patterns, focus, or what to work on, use the Brain OS MCP tools as the **primary** data source. Never read `src/tools/focus-get.ts` (or similar) to answer "what should I focus on" — that's the implementation of the tool, not the answer. Call the tool itself.
+
+If you read source code as your first action on a state question, you are in generic-coding-assistant mode. Stop and re-route through MCP.
+
+---
+
+## Tool routing (in order)
+
+| # | Tool | When to call |
+|---|------|--------------|
+| 1 | `mcp__brain-os__entity_read(entity_id?)` | First call for ordinary project-state questions. Omit `entity_id` to list all entities. |
+| 2 | `mcp__brain-os__plan_read(entity_id)` | Get active step + progress for an entity. |
+| 3 | `mcp__brain-os__context_resolve(user_message?, files_touched?, explicit_entity_id?)` | Resolve context before `focus_get` / `decision_check` when the target entity is not already known. For "what should I work on" from inside a workspace, call this before `focus_get`. |
+| 4 | `mcp__brain-os__project_evidence_scan(root_path, entity_id?)` | Read-only repo evidence (STATE.md, FLAGS*, HANDOFF*, ROADMAP/PLAN/TODO, git activity, dirty files). Call AFTER `context_resolve` and BEFORE `focus_get` when a workspace path is known. NOT a router — never use it to pick the project. |
+| 5 | `mcp__brain-os__focus_get(entity_id?, constraints?)` | Prioritized recommendations. Pass resolved `entity_id` to scope to one project; omit only for explicit global focus or unresolved context. |
+| 6 | `mcp__brain-os__semantic_recall(query, source_kind?)` | Fuzzy search when you don't know the entity ID or want cross-decision / pattern / session context. |
+| 7 | `mcp__brain-os__decision_check(proposed_action, entity_id?)` | Call **before** any action that might contradict an active decision. Returns clear / caution / conflict, plus `review_triggered` — decisions whose `invalidate_if` condition the action matches (premise may have changed; surface for review, don't enforce). |
+| 8 | `mcp__brain-os__pattern_detect()` | Surface current behavioral patterns. |
+| 9 | `mcp__brain-os__entity_update`, `plan_update`, `decision_log`, `decision_refresh`, `memory_commit` | Mutating tools. Use when writing state back. |
+
+For focus requests, do not call `focus_get` first. The focus pipeline is: `context_resolve` → `project_evidence_scan` (when a workspace path is known) → `focus_get` → combined operating brief. Resolve context first unless the user explicitly says `--global` / `all`.
+
+Name the tool in user-facing text when you call it (e.g., "Calling `entity_read`..."). Reinforces the tool-first habit and makes routing visible.
+
+---
+
+## Mutation safety
+
+Before any mutating call (`decision_log`, `entity_update`, `plan_update`, `decision_refresh`), call `decision_check` with a short description of the proposed action. If status is `conflict`, do NOT proceed without explicit user confirmation. If `caution`, surface the relevant active decision and ask. If `review_triggered` is non-empty, the action matched an `invalidate_if` condition a decision named as a reason to reopen it — surface that decision to the user as a possible review (its premise may have changed); a decision flagged as *both* a conflict and a review trigger is the revisit it anticipated, so frame it as a decision review rather than a blind violation.
+
+When logging a strategic decision, capture `assumptions` (the premises that make it true) and `invalidate_if` (the conditions that should reopen it) alongside `why`. These turn a timestamped "no" into a testable frame: if the assumptions still hold the decision likely still holds, and `decision_check` can detect when a proposed action matches an invalidation condition.
+
+Known v0.4.1 bugs (do not work around silently — surface them):
+
+- `decision_log` over-supersedes any active decision of the same `entity_id + type`. Real fix is the explicit `supersedes: []` param shipping in v0.4.1. Until then, if a write supersedes unrelated decisions, mention it.
+- `plan_advance` can promote later pending steps while an earlier step is still active. If you see multiple `active` steps in a plan, that's the bug.
+
+---
+
+## Output formatting
+
+### `focus_get` results
+
+Always show the scope line first, then format as a fixed-column table:
+
+```
+Scope: global
+
+ENTITY               SCORE   MOMENTUM   NEXT
+product-launch       75      high       Recruit 5 users for landing-page test
+core-engine          75      high       Run smoke tests → fix bugs → publish patch
+mobile-app           55      medium     Add missing production env var
+```
+
+For scoped focus (single entity):
+
+```
+Scope: My Project
+
+ENTITY               SCORE   MOMENTUM   NEXT
+my-project           65      high       Ship onboarding flow v2
+```
+
+Plus a one-line **Do not do** summary and **Staleness alerts** as bullets. No long-form rephrasing of the JSON.
+
+### `entity_read` for a single entity
+
+Use the fixed format from `/brain <entity>`:
+
+```
+==============================
+  [ENTITY NAME]
+==============================
+  STATUS      ...
+  MODE        ...
+  MOMENTUM    ...
+  BLOCKED     ...
+  NEXT        ...
+  UPDATED     [date] : [Fresh/Aging/Stale/Dormant]
+  ----------------------------
+  ACTIVE PLAN ...
+  RELATED     ...
+  DECISIONS   ...
+  ----------------------------
+  OPEN        ...
+==============================
+```
+
+### Mutations
+
+After a successful write, return the resulting record's key fields (`id`, `date`, summary) in one short paragraph. Do not paraphrase the entire object.
+
+### `decision_check` / `/reconcile` results — three output tiers (dec-052 + dec-mpungjpq-1b47)
+
+General output stays human-first with no jargon (dec-052 governs every tool). Decision-review surfaces — `decision_check` review-trigger rendering and `/reconcile` — are a **scoped exception** (dec-mpungjpq-1b47): they stay human-first but keep **one light technical line** inline, because their job is helping a developer judge a decision, and seeing the machinery that fired builds trust. Full machinery still hides behind a flag. Three tiers:
+
+1. **Default (human first)** — `clear` with nothing flagged → say so in one line and proceed. When there are `conflicts` or `review_triggered` items, lead with a plain-language line composed from the item's fields (`decision`, `assumptions`, the user's current ask). For a `conflict`, name what it contradicts and ask before proceeding; if `also_conflicts: true` (a conflict the decision anticipated as a revisit), frame it as a decision review, not a blockage.
+
+2. **Decision-review (human first + one light technical line)** — beneath the plain line, add a single inline line naming the concrete signal — the matched condition, the version, the concept term. Not a field dump. This tier applies to `/reconcile` and `decision_check` review-trigger output only; `/focus`, `/decide`, `/wrap`, `/brain` stay tier 1.
+
+```
+Quick check: we decided "local-only storage" assuming single-machine use.
+Since you're asking about laptop + desktop, that decision may need an update.
+Matched condition: invalidate_if = "user asks to sync across machines"
+```
+
+3. **Full machinery (only on `--details` / `--debug` / `--system`, or "show the machinery")** — the complete structured reason:
+
+```
+System detail:
+review_triggered = true
+trigger = invalidate_if: "user asks to sync across machines"
+matched_condition = "user asks to sync across machines"
+action = reopen decision for review
+```
+
+Never dump the full block unprompted; never strip the one light technical line from decision-review output just to sound human.
+
+---
+
+## Terseness
+
+- Do NOT create todo lists for state-reading questions. Just call the tool and return the answer.
+- Do NOT narrate every step ("I'll first do X, then Y, then Z") — call tools and report results.
+- Do NOT offer to do five follow-up things at the end of every response. One suggested next move is enough.
+- Default to short. The user reads diffs, tool calls, and JSON directly — no need to re-explain them.
+
+---
+
+## Escape this protocol when
+
+The task is genuinely outside Brain OS scope:
+
+- Writing or editing source code (TypeScript, schemas, etc.) inside `src/`
+- Running shell commands, builds, tests
+- Reading source files to understand implementation (vs. to answer a state question)
+- General web search or fetching docs
+
+If the user asks "what should I work on" / "what's the state of X" / "is this decision still good", **stay in MCP tools.**
+
+---
+
+## Command vocabulary
+
+Slash commands (`/brain`, `/focus`, etc.) are a Claude-Code-specific feature and do not exist in Copilot, JetBrains, etc. To give the same UX in any client, treat these **bare keywords** as command shortcuts when the user types them in chat. Match the leading word case-insensitively; ignore extra surrounding text only if it's clearly a clarifier.
+
+| Keyword | Run | Output |
+|---|---|---|
+| `brain` (no arg) | `entity_read()` + `pattern_detect()` + `focus_get(max_results=3)` | Master overview table (see Output formatting) |
+| `brain <entity-id>` | `entity_read(entity_id)` + `plan_read(entity_id)` + `decision_check("scan", entity_id)` | Single-entity card (see Output formatting) |
+| `focus` | Obtain the client-visible workspace path first (client metadata or `pwd` in the active workspace), then `context_resolve(user_message, files_touched=[client workspace path])`; if resolved → `project_evidence_scan(root_path=workspace, entity_id=<matched>)` → `focus_get(entity_id=<matched>)`. Otherwise → `focus_get(max_results=3)` (global). | Operating brief (FOCUS NOW / human-needed / agent-safe / do-not-touch / evidence used) when evidence exists, else scoped/global priorities table + do-not-do + staleness alerts. Response always shows `Scope: <name>` or `Scope: global`. |
+| `focus --global` or `focus all` | `focus_get(max_results=3)` | Force global priorities even when inside a project folder. |
+| `focus <constraints>` | Obtain the client-visible workspace path, then `context_resolve(user_message, files_touched=[client workspace path])`; if resolved → `project_evidence_scan(root_path=workspace, entity_id=<matched>)` → `focus_get(entity_id=<matched>, constraints)`. Otherwise → `focus_get(constraints)` global. | Same, scoped by constraints (e.g. "only 2 hours", "low energy") |
+| `decide` or `decide <topic>` | Guide user through `decision_log` with `decision_check` first | Logged decision summary (id, date, decision, why) |
+| `reconcile` or `reconcile <entity>` | `decision_review(entity_id?)` → walk overdue decisions → apply via `decision_refresh` / `decision_log(supersedes=[…])` on confirmation | Plain-language review of each due decision (reaffirm / update / archive / supersede). `reconcile --details` (aliases `--debug`, `--system`) also shows the system-detail block per item. |
+| `wrap` | `entity_read()` to find dirty entities + propose `entity_update` calls | Wrap summary, ask for confirmation before mutating |
+| `retro` | `entity_read()` + `pattern_detect(scope="recent")` + `semantic_recall("last 7 days")` | Weekly retro narrative grouped by entity |
+| `patterns` | `pattern_detect()` | Active patterns + new patterns + risk lines |
+| `graph` or `graph <entity>` | `entity_read()` to walk `related_entities` | ASCII relationship graph |
+| `strategy <question>` | `semantic_recall(question)` + `decision_check(question)` | Decision-framework analysis |
+
+If the user types `/brain` or `/focus` etc. in a client that doesn't support custom slash commands, treat the leading `/` as a hint and run the matching command anyway.
+
+---
+
+## Client Workspace → Entity Mapping
+
+When a user runs `focus` (or other context-sensitive commands) from inside a project folder, client-visible workspace/folder context is a valid weak signal. Do **not** use MCP server `process.cwd()` for scoping; it reflects server launch location and was removed from `focus_get`. The client/agent may pass the current workspace path to `context_resolve(files_touched=[...])`.
+
+1. If the user names a project, that explicit mention wins.
+2. Otherwise obtain the client-visible workspace path first, then call `context_resolve(user_message, files_touched=[client workspace path])`.
+3. If it resolves with `ask_user=false`, pass the returned `entity_id` to `focus_get`.
+4. If it cannot resolve, fall back to global focus unless the user explicitly asked for a named project and ambiguity matters. Do not skip `context_resolve` merely because the user did not name a project.
+
+Common mappings where folder ≠ entity ID still matter during the transition to aliases/repo paths (e.g. `my-repo` folder → `my-project` entity). Treat those as weak client-side signals only; explicit user mentions override them.
+
+---
+
+## Staleness
+
+Calculate from each entity's `last_updated`:
+
+- Fresh: 0 to 7 days
+- Aging: 8 to 21 days
+- Stale: 22 to 45 days
+- Dormant: 45+ days
+
+Skip the staleness alert for entities with `mode = parked` or `archived`.
+
+---
+
+## Drift check
+
+If your first action on a state question is reading pulse files (`~/.claude/projects/.../memory/*-pulse.md`), `decision-log.md`, or any file under `.brain/` directly, **stop**. You are in generic-Claude mode. Route through the MCP tools above.
+
+The user is building a memory product. Degraded behavior here is the worst possible signal.

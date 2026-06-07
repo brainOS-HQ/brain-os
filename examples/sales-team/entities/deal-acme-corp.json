@@ -1,0 +1,27 @@
+{
+  "id": "deal-acme-corp",
+  "name": "Acme Corp — Enterprise Plan",
+  "type": "deal",
+  "status": "Demo completed, waiting on procurement approval. Champion is VP Engineering.",
+  "mode": "active",
+  "momentum": "medium",
+  "priority": "high",
+  "blocked": "Procurement requires SOC2 compliance doc — we don't have it ready yet",
+  "next_move": "Send SOC2 readiness letter + schedule follow-up with champion for Thursday",
+  "last_decision": "Offered 15% annual discount for 2-year commitment — approved by sales lead",
+  "evidence_of_progress": "Demo went well, 3 follow-up questions answered, champion introduced us to procurement",
+  "open_questions": [
+    "Will they need SSO? That's an enterprise feature we haven't built yet",
+    "Is the VP the real decision maker or is there a CTO above?"
+  ],
+  "related_entities": ["deal-globex-inc"],
+  "metadata": {
+    "deal_value": "$48,000/yr",
+    "stage": "negotiation",
+    "source": "inbound — blog post",
+    "champion": "Sarah Chen, VP Engineering",
+    "days_in_pipeline": 35
+  },
+  "created_at": "2026-03-26",
+  "last_updated": "2026-04-27"
+}

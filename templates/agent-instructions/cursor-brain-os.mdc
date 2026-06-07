@@ -1,0 +1,29 @@
+---
+description: Brain OS operating instructions — use MCP tools for project state, not source-code grep
+globs:
+alwaysApply: true
+---
+
+# Brain OS rules for Cursor
+
+This project uses **Brain OS** for persistent operational state across AI agents. State lives in `.brain/`.
+
+## Canonical instructions
+
+See `AGENTS.md` at the project root. It is the cross-tool source of truth. This `.mdc` file exists only so Cursor picks up the same rules.
+
+## Critical rules (also in AGENTS.md)
+
+1. **Brain OS MCP tools are the primary data source** for any project-state question. The tools are exposed as `brain-os` in your MCP server list. Do NOT grep source code to answer "what should I focus on" — call `mcp__brain-os__focus_get`.
+
+2. **Routing order:** `entity_read` → `plan_read` → `focus_get` → `semantic_recall` → `decision_check` → `pattern_detect`. Mutating tools (`decision_log`, `entity_update`, `plan_*`, `decision_refresh`) require a prior `decision_check` call.
+
+3. **Conflict handling:** if `decision_check` returns `conflict`, do not proceed without explicit user confirmation. If `caution`, surface the relevant active decision and ask.
+
+4. **Output format:** fixed-column tables for `focus_get`, single-card format for `entity_read`. No long-form rephrasing of JSON.
+
+5. **Command vocabulary:** the user may type bare keywords (`brain`, `focus`, `decide`, `wrap`, `retro`, `patterns`, `graph`, `strategy`) with or without a leading `/`. Run the matching MCP tool sequence — do not search the repo for these words.
+
+6. **No todo lists for state-reading questions.** Call the tool, return the answer.
+
+7. **Drift check:** if your first action on a state question is reading `.brain/` files directly, stop and re-route through the MCP tools.

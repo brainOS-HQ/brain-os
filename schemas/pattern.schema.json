@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Brain OS Pattern",
+  "description": "A detected behavioral or strategic pattern across entities — reveals hidden structure in work",
+  "type": "object",
+  "required": ["id", "first_detected", "name", "entities_affected", "evidence", "status"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique pattern ID, auto-generated"
+    },
+    "first_detected": {
+      "type": "string",
+      "format": "date",
+      "description": "When this pattern was first identified"
+    },
+    "name": {
+      "type": "string",
+      "description": "Short descriptive name for the pattern"
+    },
+    "entities_affected": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Entity IDs where this pattern appears"
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Specific data points that prove this pattern exists"
+    },
+    "interpretation": {
+      "type": "string",
+      "description": "What this pattern means — one paragraph max"
+    },
+    "risk": {
+      "type": "string",
+      "description": "What happens if this pattern continues unchecked"
+    },
+    "recommendation": {
+      "type": "string",
+      "description": "One concrete action to address this pattern"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "monitoring", "resolved", "false_positive"],
+      "description": "Current state of this pattern"
+    },
+    "last_confirmed": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Last date evidence was verified"
+    }
+  }
+}

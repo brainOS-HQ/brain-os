@@ -1,0 +1,23 @@
+{
+  "id": "marketing-site",
+  "name": "Marketing Site",
+  "type": "project",
+  "status": "Landing page live, blog not started, pricing page needs copy",
+  "mode": "active",
+  "momentum": "low",
+  "priority": "medium",
+  "blocked": "Waiting on final pricing decision before writing pricing page",
+  "next_move": "Write 3 blog posts about the problem we solve",
+  "last_decision": "Use simple single-page design — no multi-page marketing site for v1",
+  "evidence_of_progress": "Landing page deployed, hero section complete, email capture working",
+  "open_questions": [
+    "What's the pricing model — per seat, per usage, or flat?"
+  ],
+  "related_entities": ["saas-mvp"],
+  "metadata": {
+    "path": "/Users/dev/marketing-site",
+    "domain": "example.com"
+  },
+  "created_at": "2026-04-01",
+  "last_updated": "2026-04-10"
+}

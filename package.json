@@ -1,0 +1,77 @@
+{
+  "name": "brain-os",
+  "version": "0.9.0",
+  "description": "Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves. The persistent memory layer that stops agent amnesia.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "brain-os": "bin/brain-os.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "serve": "node dist/index.js",
+    "test": "npm run build && node --test tests/smoke.mjs",
+    "privacy-scan": "node scripts/privacy-scan.mjs --git",
+    "prepublishOnly": "npm run build && node scripts/privacy-scan.mjs --pack",
+    "metrics": "node scripts/fetch-metrics.mjs"
+  },
+  "keywords": [
+    "brain os",
+    "mcp",
+    "model-context-protocol",
+    "mcp server",
+    "local-first mcp server",
+    "persistent memory layer",
+    "operational memory",
+    "operational state for agents",
+    "project memory",
+    "project state",
+    "agent memory",
+    "memory that stops agent amnesia",
+    "persistent memory for ai",
+    "ai agents",
+    "claude code",
+    "cursor",
+    "local-first",
+    "developer tools"
+  ],
+  "author": "Tasha Amanda",
+  "homepage": "https://brainos-hq.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brainOS-HQ/brain-os.git"
+  },
+  "bugs": {
+    "url": "https://github.com/brainOS-HQ/brain-os/issues"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "openai": "^6.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "fast-uri": ">=3.1.2",
+    "hono": ">=4.12.18",
+    "express-rate-limit": ">=8.5.1",
+    "ip-address": ">=10.1.1",
+    "protobufjs": ">=7.5.8",
+    "qs": ">=6.15.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

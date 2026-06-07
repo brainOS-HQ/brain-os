@@ -1,0 +1,31 @@
+name: privacy-gate
+
+# Deny-by-default privacy/secret gate. Fails the build if private data or
+# secret-shaped strings reach tracked files. Runs in CI (not bypassable like a
+# local hook). Name-level checks use the PRIVACY_DENYLIST repo secret so the
+# names themselves never live in the public repo.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  privacy-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Privacy / secret scan (tracked files)
+        env:
+          PRIVACY_DENYLIST: ${{ secrets.PRIVACY_DENYLIST }}
+        run: node scripts/privacy-scan.mjs --git
+      - name: Privacy / secret scan (npm tarball)
+        env:
+          PRIVACY_DENYLIST: ${{ secrets.PRIVACY_DENYLIST }}
+        run: |
+          npm ci --ignore-scripts || npm install --ignore-scripts
+          npm run build
+          node scripts/privacy-scan.mjs --pack

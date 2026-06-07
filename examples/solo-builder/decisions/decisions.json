@@ -1,0 +1,36 @@
+[
+  {
+    "id": "dec-001",
+    "date": "2026-04-15",
+    "entity_id": "saas-mvp",
+    "type": "architecture",
+    "decision": "Use OAuth2 instead of custom auth",
+    "why": "Custom auth is a security liability and 3x the development time for no user benefit",
+    "alternatives": [
+      { "option": "Custom JWT auth with email/password", "rejected_because": "Security risk, password storage liability, maintenance burden" },
+      { "option": "Magic link only", "rejected_because": "Poor UX for frequent users who log in daily" }
+    ],
+    "chosen_direction": "OAuth2 with Google + GitHub providers — covers 90% of developer users",
+    "proof_action": "Get Google OAuth working in dev by end of week",
+    "review_date": "2026-05-01",
+    "status": "active",
+    "superseded_by": null
+  },
+  {
+    "id": "dec-002",
+    "date": "2026-04-22",
+    "entity_id": "saas-mvp",
+    "type": "scope",
+    "decision": "Cut onboarding wizard from v1",
+    "why": "Onboarding wizard is 2 weeks of work for a feature nobody will see until we have users. Ship faster.",
+    "alternatives": [
+      { "option": "Build full onboarding wizard", "rejected_because": "Delays launch by 2 weeks, might not match real user needs" },
+      { "option": "Skip onboarding entirely", "rejected_because": "First-time users will be confused without any guidance" }
+    ],
+    "chosen_direction": "Empty state with a getting-started card — 2 hours instead of 2 weeks",
+    "proof_action": "Build the getting-started card component this session",
+    "review_date": "2026-05-15",
+    "status": "active",
+    "superseded_by": null
+  }
+]
