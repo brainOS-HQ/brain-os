@@ -24,6 +24,23 @@ export function assertSafeId(id: unknown, kind: string): asserts id is string {
 let cachedBrainDir: string | null = null;
 let mcpServerRef: McpServer | null = null;
 
+// Fail-closed store resolution: the server must NEVER invent a store.
+// Falling back to join(cwd, ".brain") created empty stray stores wherever the
+// MCP server happened to start from, and tools then answered from that wrong
+// store. Creation is only legitimate via `brain-os init` or explicit BRAIN_DIR.
+export class BrainStoreNotFoundError extends Error {
+  constructor(searchedFrom: string) {
+    super(
+      `No Brain OS store found (searched ${searchedFrom} and its parents; ` +
+      `BRAIN_DIR is not set). Refusing to create one implicitly. To fix: ` +
+      `set BRAIN_DIR to your existing .brain directory in the MCP server config, ` +
+      `start the session from inside a Brain OS workspace, ` +
+      `or run \`npx brain-os init\` in the project root to create a new store.`
+    );
+    this.name = "BrainStoreNotFoundError";
+  }
+}
+
 function walkUpForBrain(startDir: string): string | null {
   let dir = startDir;
   while (true) {
@@ -56,7 +73,7 @@ async function resolveBrainDir(): Promise<string> {
   const walkUpResult = walkUpForBrain(process.cwd());
   if (walkUpResult) return walkUpResult;
 
-  return join(process.cwd(), ".brain");
+  throw new BrainStoreNotFoundError(process.cwd());
 }
 
 export function registerMcpServer(server: McpServer): void {
@@ -71,10 +88,9 @@ export async function initBrainDir(): Promise<string> {
 
 export function getBrainDir(): string {
   if (!cachedBrainDir) {
-    cachedBrainDir =
-      process.env.BRAIN_DIR ??
-      walkUpForBrain(process.cwd()) ??
-      join(process.cwd(), ".brain");
+    const resolved = process.env.BRAIN_DIR ?? walkUpForBrain(process.cwd());
+    if (!resolved) throw new BrainStoreNotFoundError(process.cwd());
+    cachedBrainDir = resolved;
   }
   return cachedBrainDir;
 }

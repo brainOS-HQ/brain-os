@@ -139,10 +139,14 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 | `memory_commit` | End-of-session commit — save all state changes |
 | `semantic_recall` | Search memory by meaning using natural language |
 | `audit_log` | Read the full mutation history — what changed, when, by whom |
+| `wrap_check` | Detect whether meaningful state changes have accumulated since the last wrap |
+| `wrap_auto` | Non-interactive safety-net wrap: applies low-risk fields and stages high-risk changes for review |
 | `plan_set` | Set an ordered plan for an entity — step 1 becomes active next_move |
 | `plan_advance` | Complete or skip a step (requires evidence/reason) — auto-promotes next |
 | `plan_add` | Add steps to an existing plan |
 | `plan_read` | View plan progress and current step |
+| `risk_assess` | Classify risky actions before execution, including public-release and destructive-operation risks |
+| `action_guard` | Apply built-in guard templates to common high-risk actions before proceeding |
 
 ## Slash commands
 
@@ -223,10 +227,11 @@ Current coverage (regression + happy-path):
 - `decision_check` — keyword-only flag stays caution without embeddings (no false STOPs), asymmetric semantic comparison (rejected vs chosen facet)
 - `decision_refresh` — clears dangling `superseded_by` when status transitions away from `superseded`
 - `plan_advance` — no over-promotion when an active step already exists
-- `entity_update` — apply diff and record changes, missing-entity error, `mode_reason` required when parking
+- `entity_update` — apply diff and record changes, create missing entity, `mode_reason` required when parking, status-only updates apply, guarded ranking skips are visible
 - `semantic_recall` — throws `EmbeddingsNotConfiguredError` (not generic Error) when `BRAIN_EMBEDDINGS` is unset
+- Store resolution — fails closed in a storeless cwd instead of silently creating an empty `.brain/`
 
-Known gaps (no direct coverage yet): `focus_get` scoring, `pattern_detect` heuristics, `entity_*` happy-path edges, `memory_*`, `plan_set/add/read`, and the `brain://status` resource. Expanding the suite is on the roadmap.
+Known gaps (no direct coverage yet): `focus_get` scoring, `pattern_detect` heuristics, `memory_*`, `plan_set/add/read`, and the `brain://status` resource. Expanding the suite is on the roadmap.
 
 If you hit a bug, please open an issue with the tool, input, and output — that's the fastest path to a fix.
 

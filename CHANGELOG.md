@@ -2,6 +2,20 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.9.1] — 2026-07-06
+
+> Patch release: maintenance fixes only. No new private/cloud dogfooding features.
+
+### Fixed
+
+- `entity_update` no longer silently drops a status update just because the new status text is shorter than the old one. Different status values now apply; genuinely identical values remain no-ops.
+- Guarded ranking downgrades (`mode`, `momentum`, `priority`, `type`) are now reported as kept/ignored instead of silently returning success with no signal.
+- Store resolution now fails closed when no `.brain/` store can be found and `BRAIN_DIR` is not set. The server no longer silently creates an empty `.brain/` in an arbitrary launch directory; the error points users to `BRAIN_DIR`, starting from a Brain OS workspace, or `npx brain-os init`.
+
+### Tests
+
+- Added regression coverage for the status-only update, visible ranking downgrade, and storeless-cwd fail-closed behavior.
+
 ## [0.9.0] — 2026-06-07
 
 > Minor release: **auto-wrap.** Brain OS now catches session state before it's lost — to context compaction or a closed terminal — instead of relying on you to remember to run `/wrap`. Plus alias-exclusivity enforcement and two new pipeline commands.

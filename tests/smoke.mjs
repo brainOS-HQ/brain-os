@@ -1057,3 +1057,59 @@ test("wrap_auto: applies low-risk fields, stages high-risk for review, trusts no
   assert.equal(staged.pending_review.mode, "parked");
   assert.deepEqual(staged.pending_review.decisions, [{ decision: "use Z", why: "faster" }]);
 });
+
+test("entity_update: status-only update applies even when the new value is shorter", async () => {
+  const longStatus = "Long historical status that should not block a current concise replacement. ".repeat(4);
+  await seedEntity("ent-status-shorter", "Status Shorter", { status: longStatus });
+
+  const result = await updateEntity("ent-status-shorter", { status: "current concise status" });
+  const entity = await ctx.storage.getEntity("ent-status-shorter");
+
+  assert.equal(entity.status, "current concise status");
+  assert.ok(result.changes.some((c) => c.startsWith("status")), "status change should be reported");
+});
+
+test("entity_update: guarded ranking downgrade is visible, not silent", async () => {
+  await seedEntity("ent-ranking-visible", "Ranking Visible", { momentum: "high" });
+
+  const result = await updateEntity("ent-ranking-visible", { momentum: "low" });
+  const entity = await ctx.storage.getEntity("ent-ranking-visible");
+
+  assert.equal(entity.momentum, "high", "downgrade protection should still hold");
+  assert.ok(
+    result.changes.some((c) => c.includes("momentum") && c.includes("kept")),
+    "guarded skip should be visible to the caller",
+  );
+});
+
+test("store resolution fails closed: no silent .brain/ creation in a storeless cwd", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { existsSync } = await import("node:fs");
+  const storelessCwd = mkdtempSync(join(tmpdir(), "brain-os-storeless-"));
+  const distFileStore = join(process.cwd(), "dist", "utils", "file-store.js");
+
+  const script = `
+    const { getBrainDir } = await import(${JSON.stringify(distFileStore)});
+    try {
+      const dir = getBrainDir();
+      console.log("RESOLVED:" + dir);
+    } catch (e) {
+      console.log("THREW:" + e.name + ":" + e.message);
+    }
+  `;
+
+  const env = { ...process.env };
+  delete env.BRAIN_DIR;
+  const out = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+    cwd: storelessCwd,
+    env,
+    encoding: "utf-8",
+  }).trim();
+
+  assert.ok(out.startsWith("THREW:BrainStoreNotFoundError:"), `expected fail-closed throw, got: ${out}`);
+  assert.ok(out.includes("BRAIN_DIR"));
+  assert.ok(out.includes("brain-os init"));
+  assert.ok(!existsSync(join(storelessCwd, ".brain")), "no .brain/ may be created implicitly");
+
+  rmSync(storelessCwd, { recursive: true, force: true });
+});
