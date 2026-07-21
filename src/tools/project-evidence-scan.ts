@@ -70,14 +70,29 @@ function trimLine(line: string): string {
   return t.length > MAX_LINE_LEN ? t.slice(0, MAX_LINE_LEN - 1) + "…" : t;
 }
 
+// Git has more repository-routing variables than GIT_DIR / GIT_WORK_TREE /
+// GIT_INDEX_FILE (for example GIT_OBJECT_DIRECTORY and GIT_COMMON_DIR). Strip
+// the full GIT_* namespace for these local, read-only subprocesses so no
+// inherited hook/runner environment can redirect discovery, refs, indexes, or
+// object storage away from -C <root>.
+export function sanitizedGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const env = { ...source };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("GIT_")) delete env[key];
+  }
+  return env;
+}
+
 // Run a read-only git command scoped to the repo. Returns trimmed non-empty
 // lines, or null if git is unavailable / the path is not a repo.
 function git(root: string, args: string[]): string[] | null {
+  const env = sanitizedGitEnv();
   try {
     const out = execFileSync("git", ["-C", root, ...args], {
       encoding: "utf8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
+      env,
     });
     return out.split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim().length > 0);
   } catch {

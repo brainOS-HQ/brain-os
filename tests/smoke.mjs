@@ -19,7 +19,7 @@ const { refreshDecision: _refreshDecision } = await import("../dist/tools/decisi
 const { updateEntity: _updateEntity } = await import("../dist/tools/entity-update.js");
 const { getFocus: _getFocus } = await import("../dist/tools/focus-get.js");
 const { resolveContext: _resolveContext } = await import("../dist/tools/context-resolve.js");
-const { scanProjectEvidence } = await import("../dist/tools/project-evidence-scan.js");
+const { scanProjectEvidence, sanitizedGitEnv } = await import("../dist/tools/project-evidence-scan.js");
 const { checkMemory: _checkMemory } = await import("../dist/tools/memory-check.js");
 const { reviewDecisions: _reviewDecisions } = await import("../dist/tools/decision-review.js");
 const { readAuditLog: _readAuditLog } = await import("../dist/tools/audit-read.js");
@@ -701,10 +701,25 @@ test("project_evidence_scan: extracts next move, human gate, dirty file; mutates
       "4.2 and 4.1 can run in parallel with Phase 7.\n",
   );
 
-  // git repo with one commit + an untracked (dirty) file
+  // Snapshot the ambient repo HEAD (the repo this test process runs inside, or an
+  // ambient GIT_DIR). A fixture git op must NEVER touch it — see 2026-07-20.
+  const ambientHead = () => {
+    try {
+      return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      return null;
+    }
+  };
+  const parentHeadBefore = ambientHead();
+
+  // git repo with one commit + an untracked (dirty) file. Strip the full GIT_*
+  // namespace so -C <repo> is authoritative and fixture refs/indexes/objects
+  // cannot leak into ambient locations.
+  const gitEnv = sanitizedGitEnv();
   const g = (...args) =>
     execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
       stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
     });
   g("init", "-q");
   g("add", "STATE.md", "HANDOFF_2024-01-15.md");
@@ -734,7 +749,31 @@ test("project_evidence_scan: extracts next move, human gate, dirty file; mutates
   assert.equal(readdirSync(repo).sort().join(","), repoBefore, "scan must not add/remove repo files");
   assert.equal(readdirSync(join(tmpBrain, "entities")).length, brainBefore, "scan must not write Brain OS state");
 
+  // Leak guard (2026-07-20): neither the fixture nor the scan may commit to the
+  // repo this test runs inside — even under an ambient GIT_DIR.
+  assert.equal(ambientHead(), parentHeadBefore, "evidence-scan test must not mutate the ambient/parent repo HEAD");
+
   rmSync(repo, { recursive: true, force: true });
+});
+
+test("project_evidence_scan: git isolation strips every inherited GIT_* variable", () => {
+  const env = sanitizedGitEnv({
+    PATH: "/usr/bin:/bin",
+    GIT_DIR: "/ambient/repo/.git",
+    GIT_WORK_TREE: "/ambient/repo",
+    GIT_INDEX_FILE: "/ambient/repo/.git/index",
+    GIT_OBJECT_DIRECTORY: "/ambient/repo/.git/objects",
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: "/ambient/alternate-objects",
+    GIT_COMMON_DIR: "/ambient/repo/.git",
+    GIT_CONFIG_COUNT: "1",
+    GIT_SSH_COMMAND: "ssh -i /ambient/key",
+  });
+  assert.equal(env.PATH, "/usr/bin:/bin", "non-Git environment is preserved");
+  assert.deepEqual(
+    Object.keys(env).filter((key) => key.startsWith("GIT_")),
+    [],
+    "no inherited Git routing/config variable may reach the isolated subprocess",
+  );
 });
 
 test("project_evidence_scan: empty dir → warning, empty arrays, no crash", async () => {
