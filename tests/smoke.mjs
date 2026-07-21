@@ -701,10 +701,28 @@ test("project_evidence_scan: extracts next move, human gate, dirty file; mutates
       "4.2 and 4.1 can run in parallel with Phase 7.\n",
   );
 
-  // git repo with one commit + an untracked (dirty) file
+  // Snapshot the ambient repo HEAD (the repo this test process runs inside, or an
+  // ambient GIT_DIR). A fixture git op must NEVER touch it — see 2026-07-20.
+  const ambientHead = () => {
+    try {
+      return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    } catch {
+      return null;
+    }
+  };
+  const parentHeadBefore = ambientHead();
+
+  // git repo with one commit + an untracked (dirty) file. Strip inherited GIT_*
+  // location vars so -C <repo> is authoritative and the fixture commit cannot leak
+  // into the ambient repo (an ambient GIT_DIR would otherwise override -C).
+  const gitEnv = { ...process.env };
+  delete gitEnv.GIT_DIR;
+  delete gitEnv.GIT_WORK_TREE;
+  delete gitEnv.GIT_INDEX_FILE;
   const g = (...args) =>
     execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
       stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
     });
   g("init", "-q");
   g("add", "STATE.md", "HANDOFF_2024-01-15.md");
@@ -733,6 +751,10 @@ test("project_evidence_scan: extracts next move, human gate, dirty file; mutates
   // No mutation: repo top-level files and Brain OS entities are unchanged.
   assert.equal(readdirSync(repo).sort().join(","), repoBefore, "scan must not add/remove repo files");
   assert.equal(readdirSync(join(tmpBrain, "entities")).length, brainBefore, "scan must not write Brain OS state");
+
+  // Leak guard (2026-07-20): neither the fixture nor the scan may commit to the
+  // repo this test runs inside — even under an ambient GIT_DIR.
+  assert.equal(ambientHead(), parentHeadBefore, "evidence-scan test must not mutate the ambient/parent repo HEAD");
 
   rmSync(repo, { recursive: true, force: true });
 });

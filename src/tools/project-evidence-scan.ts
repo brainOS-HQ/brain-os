@@ -73,11 +73,20 @@ function trimLine(line: string): string {
 // Run a read-only git command scoped to the repo. Returns trimmed non-empty
 // lines, or null if git is unavailable / the path is not a repo.
 function git(root: string, args: string[]): string[] | null {
+  // Strip inherited GIT_* location vars so git resolves strictly from -C <root>.
+  // An ambient GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE (e.g. set when a git hook
+  // invokes a process that reaches this scan) otherwise OVERRIDES -C and the scan
+  // hits the WRONG repo — root cause of the 2026-07-20 seed-commit incident.
+  const env = { ...process.env };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
+  delete env.GIT_INDEX_FILE;
   try {
     const out = execFileSync("git", ["-C", root, ...args], {
       encoding: "utf8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
+      env,
     });
     return out.split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim().length > 0);
   } catch {
