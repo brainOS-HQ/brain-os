@@ -6,8 +6,9 @@ Brain OS is operational state infrastructure for AI agents. State lives locally 
 
 | Version | Supported |
 | ------- | --------- |
-| 0.4.x   | ✅ Active |
-| < 0.4   | ❌ Please upgrade |
+| 0.10.x  | ✅ Active |
+| 0.9.x   | ⚠️ Security fixes only |
+| < 0.9   | ❌ Please upgrade |
 
 ## Reporting a Vulnerability
 
@@ -54,14 +55,27 @@ We follow a coordinated disclosure model:
 
 ## Recent Advisories
 
+### Unreleased — v0.10.0 candidate
+
+The v0.10.0 dependency-reduction release removes embedding providers from the default installation. Exact clean consumer audits improve from 5 High, 2 Moderate, 0 Low, and 0 Critical findings in published v0.9.1 to 0 High, 2 Moderate, 0 Low, and 0 Critical findings in the candidate.
+
+The removed High chains were inherited through `@huggingface/transformers` → `onnxruntime-node` → `adm-zip` and `@huggingface/transformers` → `sharp`. Users who deliberately enable local embeddings may install Transformers as an optional peer and should evaluate that provider's current advisories separately. OpenAI embeddings likewise require an explicit optional `openai` peer.
+
+The release also strips the full inherited `GIT_*` namespace before `project_evidence_scan` invokes Git. This prevents ambient repository-routing and configuration variables from redirecting evidence reads to another repository.
+
+The public-action guardian now treats caller-declared public destinations and clear natural-language branch or commit push descriptions as guarded actions. Callers no longer need to include the literal `git push` command for the confirmation requirement to fire.
+
+Two Moderate findings remain in `@modelcontextprotocol/sdk` through its Hono HTTP adapter. Brain OS uses stdio transport and does not expose the affected HTTP static-file path. The findings remain tracked until the SDK supports the fixed Hono major or splits transport dependencies.
+
 ### 2026-05-22 — v0.4.2
 
-First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. All five were resolved in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field pinning safe minimums for downstream consumers. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
+First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. Repository installs were repaired in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
 
 ## Dependency Hygiene
 
-- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml) — any vulnerability fails CI before it can reach a release
-- The `overrides` field in `package.json` pins safe minimums for known-vulnerable transitive dependencies, so downstream consumers get the patched versions on fresh install
+- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml); Critical and High findings fail the feature-release bar
+- Exact packed artifacts are audited in a clean consumer project. npm does not propagate a dependency package's `overrides`, so repository-only audit results are never presented as downstream protection
+- Embedding providers remain explicit optional peers so default consumers do not inherit their native or image-processing dependency trees
 - GitHub Dependabot is enabled for weekly transitive bump PRs
 
 ## Local State Considerations

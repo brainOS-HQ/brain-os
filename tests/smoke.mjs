@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,9 +20,11 @@ const { updateEntity: _updateEntity } = await import("../dist/tools/entity-updat
 const { getFocus: _getFocus } = await import("../dist/tools/focus-get.js");
 const { resolveContext: _resolveContext } = await import("../dist/tools/context-resolve.js");
 const { scanProjectEvidence, sanitizedGitEnv } = await import("../dist/tools/project-evidence-scan.js");
+const { checkOperationalState } = await import("../dist/tools/operational-state-check.js");
 const { checkMemory: _checkMemory } = await import("../dist/tools/memory-check.js");
 const { reviewDecisions: _reviewDecisions } = await import("../dist/tools/decision-review.js");
 const { readAuditLog: _readAuditLog } = await import("../dist/tools/audit-read.js");
+const { assessRisk } = await import("../dist/tools/risk-assess.js");
 const { createLocalJsonAdapter } = await import("../dist/storage/local-json.js");
 
 // Single shared adapter for all tests
@@ -70,6 +72,30 @@ async function seedEntity(id, name, overrides = {}) {
 
 process.on("exit", () => {
   rmSync(tmpBrain, { recursive: true, force: true });
+});
+
+test("risk_assess: natural-language branch push cannot bypass the public-action gate", async () => {
+  const result = await assessRisk({
+    proposed_action: "Push the isolated branch to the public remote so CI can run",
+    target_visibility: "public",
+  });
+
+  assert.equal(result.pre_filter_skipped, false);
+  assert.equal(result.boundary_crossed, "local_to_external");
+  assert.equal(result.risk_level, "medium");
+  assert.equal(result.reversibility, "hard_to_reverse");
+  assert.equal(result.requires_confirmation, true);
+});
+
+test("risk_assess: literal git push remains confirmation-gated", async () => {
+  const result = await assessRisk({
+    proposed_action: "git push public HEAD:refs/heads/release-test",
+    target_visibility: "public",
+  });
+
+  assert.equal(result.pre_filter_skipped, false);
+  assert.equal(result.boundary_crossed, "local_to_external");
+  assert.equal(result.requires_confirmation, true);
 });
 
 test("decision_log: does NOT auto-supersede on type collision", async () => {
@@ -266,6 +292,49 @@ test("semantic_recall: throws EmbeddingsNotConfiguredError when BRAIN_EMBEDDINGS
     (err) => err instanceof EmbeddingsNotConfiguredError,
     "should throw EmbeddingsNotConfiguredError, not a generic Error"
   );
+});
+
+test("default package keeps embedding SDKs non-auto-installed", () => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+  for (const provider of ["@huggingface/transformers", "openai"]) {
+    assert.equal(pkg.dependencies?.[provider], undefined, `${provider} must not be a default dependency`);
+    assert.ok(pkg.peerDependencies?.[provider], `${provider} must remain an explicit optional peer`);
+    assert.equal(
+      pkg.peerDependenciesMeta?.[provider]?.optional,
+      true,
+      `${provider} must not be auto-installed`,
+    );
+  }
+});
+
+test("configured but missing optional embedding providers fail with an install action", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const distEmbeddings = join(process.cwd(), "dist", "utils", "embeddings.js");
+  const script = `
+    const { getProviderInfo } = await import(${JSON.stringify(distEmbeddings)});
+    console.log(JSON.stringify(await getProviderInfo()));
+  `;
+
+  for (const [mode, packageName] of [
+    ["local", "@huggingface/transformers"],
+    ["openai", "openai"],
+  ]) {
+    const env = {
+      ...process.env,
+      BRAIN_DIR: tmpBrain,
+      BRAIN_EMBEDDINGS: mode,
+      ...(mode === "openai" ? { OPENAI_API_KEY: "test-only-" + "not-a-real-key" } : {}),
+    };
+    const out = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+      env,
+      encoding: "utf8",
+    });
+    const info = JSON.parse(out);
+    assert.equal(info.ready, false);
+    assert.equal(info.provider, "none");
+    assert.match(info.error, new RegExp(`optional peer.*${packageName.replace("/", "\\/")}`));
+    assert.match(info.error, /npm install/);
+  }
 });
 
 // v0.5.0 regression — substring false positive in extractNegationConflicts.
@@ -784,6 +853,120 @@ test("project_evidence_scan: empty dir → warning, empty arrays, no crash", asy
   assert.equal(r.recent_git_activity.length, 0);
   assert.ok(r.warnings.length >= 1, "should warn when no evidence files and no git history exist");
   rmSync(empty, { recursive: true, force: true });
+});
+
+test("operational_state_check: verifies, detects drift/stale/conflict, and separates judgment", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-opstate-"));
+  writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "demo-package", version: "2.1.0" }));
+
+  const gitEnv = sanitizedGitEnv();
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
+      encoding: "utf8",
+    }).trim();
+  g("init", "-q");
+  g("add", "package.json");
+  g("commit", "-q", "-m", "seed");
+  const branch = g("rev-parse", "--abbrev-ref", "HEAD");
+  const head = g("rev-parse", "HEAD");
+  const fixedNow = new Date("2026-07-26T12:00:00.000Z");
+
+  const result = checkOperationalState({
+    root_path: repo,
+    claims: [
+      { key: "package.name", value: "demo-package", evidence: "release manifest" },
+      { key: "package.version", value: "2.0.0" },
+      {
+        key: "repository.branch",
+        value: branch,
+        observed_at: "2026-07-20T12:00:00.000Z",
+        freshness_ttl_seconds: 60,
+      },
+      { key: "repository.head", value: head },
+      { key: "repository.head", value: "a".repeat(40) },
+    ],
+    desired_state: [
+      { key: "package.version", value: "2.2.0", why: "next approved release" },
+    ],
+    decision_context: [
+      { id: "dec-example", summary: "Ship only after review" },
+    ],
+  }, { now: fixedNow });
+
+  const byKey = Object.fromEntries(result.observations.map((item) => [item.key, item]));
+  assert.equal(result.mode, "ephemeral_read_only");
+  assert.equal(result.writes, "none");
+  assert.equal(byKey["package.name"].status, "verified");
+  assert.deepEqual(byKey["package.name"].claim_evidence, ["release manifest"]);
+  assert.equal(byKey["package.version"].status, "drift");
+  assert.equal(byKey["package.version"].desired_status, "unmet");
+  assert.deepEqual(byKey["package.version"].desired_reasons, ["next approved release"]);
+  assert.equal(byKey["repository.branch"].status, "stale");
+  assert.equal(byKey["repository.head"].status, "conflict");
+  assert.equal(result.decision_context[0].classification, "human_judgment_not_verified");
+  assert.equal(result.warnings.length, 0);
+
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test("operational_state_check: repeated runs are byte-equivalent and write nothing", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, readdirSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-opstate-nowrite-"));
+  writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "no-write", version: "1.0.0" }));
+
+  const gitEnv = sanitizedGitEnv();
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
+    });
+  g("init", "-q");
+  g("add", "package.json");
+  g("commit", "-q", "-m", "seed");
+
+  const fixedNow = new Date("2026-07-26T12:00:00.000Z");
+  const beforeFiles = readdirSync(repo).sort();
+  const beforeBrainRows = readdirSync(join(tmpBrain, "entities")).length;
+  const first = checkOperationalState({ root_path: repo }, { now: fixedNow });
+  const second = checkOperationalState({ root_path: repo }, { now: fixedNow });
+
+  assert.deepEqual(second, first, "same sources at the same check time must produce the same report");
+  assert.deepEqual(readdirSync(repo).sort(), beforeFiles, "checker must not add or remove repository files");
+  assert.equal(readdirSync(join(tmpBrain, "entities")).length, beforeBrainRows, "checker must not write Brain OS state");
+  assert.equal(first.observations.length, 4, "output is bounded to the closed canary set");
+  assert.equal(first.summary.observed_only, 4);
+
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test("operational_state_check: refuses package.json symlink escape and bounds input", async () => {
+  const { writeFileSync, symlinkSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-opstate-boundary-"));
+  const outside = mkdtempSync(join(tmpdir(), "brain-opstate-outside-"));
+  writeFileSync(join(outside, "package.json"), JSON.stringify({ name: "secret", version: "9.9.9" }));
+  symlinkSync(join(outside, "package.json"), join(repo, "package.json"));
+
+  const result = checkOperationalState({ root_path: repo }, { now: new Date("2026-07-26T12:00:00.000Z") });
+  const packageName = result.observations.find((item) => item.key === "package.name");
+  assert.equal(packageName.status, "unavailable");
+  assert.equal(packageName.observed_value, null);
+  assert.ok(result.warnings.some((warning) => warning.includes("outside root_path")));
+
+  assert.throws(
+    () => checkOperationalState({
+      root_path: repo,
+      claims: Array.from({ length: 13 }, () => ({ key: "package.name", value: "x" })),
+    }),
+    /bounded to 12/,
+  );
+
+  rmSync(repo, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
 });
 
 test("decision_review: duplicate stub → archive, pointing at canonical (canonical not surfaced)", async () => {
