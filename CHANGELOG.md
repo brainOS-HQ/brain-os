@@ -2,6 +2,37 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.10.0] — Unreleased
+
+> Verified Operational State (read-only), a dependency-reduced core, and security hardening. No private reconciliation, Vault, governor, or cloud implementation is included.
+
+### Added
+
+- **`operational_state_check`** — an ephemeral, read-only MCP tool that independently observes a closed canary set (`package.name`, `package.version`, Git branch, and Git HEAD), compares it with optional claimed and desired state, and reports verified, drift, stale, conflict, or unavailable results with evidence pointers. Decision context remains visibly classified as human judgment.
+- **`brain-os reconcile --check [path]`** — CLI access to the same allowlisted verifier. It prints JSON to stdout and writes no repository or Brain OS state.
+- Boundary tests for package-file symlink escapes, bounded inputs, repeated deterministic checks, and zero persistent writes.
+
+### Security
+
+- Removed `@huggingface/transformers`, ONNX Runtime, Sharp, and `adm-zip` from the default installation. OpenAI is no longer installed by default either.
+- Exact clean consumer comparison: published `0.9.1` reports 5 High, 2 Moderate, 0 Low, and 0 Critical findings; this candidate reports 0 High, 2 Moderate, 0 Low, and 0 Critical findings.
+- Default consumer installation falls from 142 installed packages to 94.
+- Isolated every `project_evidence_scan` Git subprocess from inherited `GIT_*` routing and configuration variables, preventing ambient variables from redirecting evidence reads to another repository.
+- Hardened `risk_assess` so public-destination actions and clear natural-language branch/commit push descriptions cannot bypass the confirmation gate merely because the caller did not supply the literal `git push` command.
+- The two remaining Moderate findings are inherited from `@modelcontextprotocol/sdk`'s Hono HTTP adapter. Brain OS uses the SDK's stdio transport and does not expose that HTTP path.
+
+### Changed
+
+- Local and OpenAI embeddings are explicit optional peers. Core Brain OS continues to operate without either SDK; `semantic_recall` reports a bounded setup error when no provider is configured.
+- Users who already set `BRAIN_EMBEDDINGS=local` or `openai` must install the matching provider beside `brain-os`. Missing providers are never installed or downloaded silently.
+
+### Tests
+
+- Added regressions proving embedding SDKs remain non-auto-installed and a configured-but-missing provider returns an actionable error.
+- Added adversarial coverage proving inherited `GIT_*` variables cannot redirect evidence-scan operations.
+- Added regressions proving both natural-language branch pushes and literal `git push` commands remain confirmation-gated.
+- Added read-only operational-state coverage for verification, drift, stale claims, conflicting claims, unavailable sources, judgment separation, and no-write behavior.
+
 ## [0.9.1] — 2026-07-06
 
 > Patch release: maintenance fixes only. No new private/cloud dogfooding features.

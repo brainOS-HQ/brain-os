@@ -25,6 +25,29 @@ export interface RecallResult {
 
 type EmbedFn = (text: string) => Promise<number[] | null>;
 
+type OpenAIClient = {
+  embeddings: {
+    create(input: {
+      model: string;
+      input: string;
+      dimensions: number;
+    }): Promise<{ data: Array<{ embedding: number[] }> }>;
+  };
+};
+
+type OpenAIConstructor = new (options: { apiKey: string }) => OpenAIClient;
+
+type LocalExtractor = (
+  text: string,
+  options: { pooling: "mean"; normalize: true }
+) => Promise<{ data: Float32Array | number[] }>;
+
+type LocalPipeline = (
+  task: "feature-extraction",
+  model: string,
+  options: { dtype: "fp32" }
+) => Promise<LocalExtractor>;
+
 export class EmbeddingsNotConfiguredError extends Error {
   constructor(reason: string) {
     super(reason);
@@ -32,15 +55,28 @@ export class EmbeddingsNotConfiguredError extends Error {
   }
 }
 
+const LOCAL_PROVIDER_PACKAGE = "@huggingface/transformers";
+const OPENAI_PROVIDER_PACKAGE = "openai";
+
 const CONFIG_HINT =
-  "Set BRAIN_EMBEDDINGS in your MCP server env. Pick one:\n" +
-  '  "env": { "BRAIN_EMBEDDINGS": "local" }    // ~100MB on-device model, no API key\n' +
-  '  "env": { "BRAIN_EMBEDDINGS": "openai", "OPENAI_API_KEY": "${OPENAI_API_KEY}" }   // reference the key from your shell env — never paste a raw sk-... value\n' +
+  "Embeddings are optional and are not installed with brain-os. Install one provider beside brain-os, then configure it:\n" +
+  `  npm install ${LOCAL_PROVIDER_PACKAGE}\n` +
+  '  "env": { "BRAIN_EMBEDDINGS": "local" }\n' +
+  `  npm install ${OPENAI_PROVIDER_PACKAGE}\n` +
+  '  "env": { "BRAIN_EMBEDDINGS": "openai", "OPENAI_API_KEY": "${OPENAI_API_KEY}" }\n' +
   "Then restart your MCP client. Other tools (entity_update, decision_log, etc.) work without embeddings.";
 
 let activeProvider: { name: "local" | "openai"; embed: EmbedFn } | null = null;
 let initError: string | null = null;
 let initPromise: Promise<void> | null = null;
+
+function isMissingOptionalProvider(error: unknown, packageName: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === "ERR_MODULE_NOT_FOUND" &&
+    typeof candidate.message === "string" &&
+    candidate.message.includes(packageName);
+}
 
 async function initProvider(): Promise<void> {
   const mode = process.env.BRAIN_EMBEDDINGS?.toLowerCase().trim();
@@ -59,7 +95,13 @@ async function initProvider(): Promise<void> {
       return;
     }
     try {
-      const { default: OpenAI } = await import("openai");
+      // Keep providers out of the default dependency graph. The variable import
+      // prevents TypeScript from requiring provider packages at core build time;
+      // the package name remains closed and non-user-controlled.
+      const providerModule = await import(OPENAI_PROVIDER_PACKAGE) as {
+        default: OpenAIConstructor;
+      };
+      const OpenAI = providerModule.default;
       const client = new OpenAI({ apiKey: openaiKey });
       activeProvider = {
         name: "openai",
@@ -81,14 +123,21 @@ async function initProvider(): Promise<void> {
       );
     } catch (e) {
       activeProvider = null;
-      initError = `Failed to initialize OpenAI embeddings: ${e instanceof Error ? e.message : String(e)}`;
+      initError = isMissingOptionalProvider(e, OPENAI_PROVIDER_PACKAGE)
+        ? `BRAIN_EMBEDDINGS=openai requires the optional peer "${OPENAI_PROVIDER_PACKAGE}". Install it beside brain-os with: npm install ${OPENAI_PROVIDER_PACKAGE}`
+        : `Failed to initialize OpenAI embeddings: ${e instanceof Error ? e.message : String(e)}`;
     }
     return;
   }
 
   if (mode === "local") {
     try {
-      const { pipeline } = await import("@huggingface/transformers");
+      // This package is intentionally an optional peer: default Brain OS
+      // installs do not carry the ONNX/Sharp image stack or its native binaries.
+      const providerModule = await import(LOCAL_PROVIDER_PACKAGE) as {
+        pipeline: LocalPipeline;
+      };
+      const { pipeline } = providerModule;
       const extractor = await pipeline(
         "feature-extraction",
         "Xenova/all-MiniLM-L6-v2",
@@ -106,7 +155,9 @@ async function initProvider(): Promise<void> {
       };
     } catch (e) {
       activeProvider = null;
-      initError = `Failed to initialize local embeddings: ${e instanceof Error ? e.message : String(e)}`;
+      initError = isMissingOptionalProvider(e, LOCAL_PROVIDER_PACKAGE)
+        ? `BRAIN_EMBEDDINGS=local requires the optional peer "${LOCAL_PROVIDER_PACKAGE}". Install it beside brain-os with: npm install ${LOCAL_PROVIDER_PACKAGE}`
+        : `Failed to initialize local embeddings: ${e instanceof Error ? e.message : String(e)}`;
     }
     return;
   }
