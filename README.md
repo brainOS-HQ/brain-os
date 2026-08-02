@@ -58,6 +58,8 @@ That's the wedge: structured state with enforcement, so agents stop re-opening q
 
 ## Quick start
 
+Requires Node.js 20 or newer.
+
 ```bash
 # In your project
 npx brain-os init
@@ -98,7 +100,17 @@ Add to your MCP config:
 
 The `semantic_recall` tool needs an embeddings provider. Everything else (`entity_update`, `decision_log`, `plan_*`, etc.) works without one.
 
-Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
+Brain OS does **not** install an embeddings SDK by default. This keeps the core install small and avoids pulling native ONNX/Sharp dependencies into users who do not need semantic search. Install exactly one optional provider beside `brain-os`, then add `BRAIN_EMBEDDINGS` to your MCP server env:
+
+```bash
+# Private, on-device embeddings
+npm install brain-os @huggingface/transformers
+
+# Or OpenAI embeddings
+npm install brain-os openai
+```
+
+Then configure the provider in your MCP server environment:
 
 ```json
 {
@@ -114,12 +126,12 @@ Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
 
 | Mode | What it does | Setup |
 |------|--------------|-------|
-| `local` | Downloads a ~100MB on-device model (`Xenova/all-MiniLM-L6-v2`). Runs on your CPU. No data leaves your machine. | Just set `BRAIN_EMBEDDINGS=local`. First call to `semantic_recall` triggers the model download (~30s on good wifi). |
-| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Set `BRAIN_EMBEDDINGS=openai`, then reference your key as `"OPENAI_API_KEY": "${OPENAI_API_KEY}"` (see security note below). |
+| `local` | Downloads a ~100MB on-device model (`Xenova/all-MiniLM-L6-v2`). Runs on your CPU. No data leaves your machine. | Install `@huggingface/transformers`, then set `BRAIN_EMBEDDINGS=local`. The first recall downloads the model. |
+| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Install `openai`, set `BRAIN_EMBEDDINGS=openai`, then reference `OPENAI_API_KEY` from your shell environment. |
 
-If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with this config snippet. No silent downloads, no surprise API calls.
+If `BRAIN_EMBEDDINGS` is unset, or the selected optional provider is missing, `semantic_recall` returns a clear setup error. No silent provider install, model download, or API call occurs. Core tools continue working normally.
 
-> **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell (`export OPENAI_API_KEY=sk-...` in `~/.zshrc`) and reference it in the `env` block as `"OPENAI_API_KEY": "${OPENAI_API_KEY}"`. Better yet, use `BRAIN_EMBEDDINGS=local`, which needs no key and keeps all embedding work on your machine.
+> **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell and reference it from the MCP process environment. The local provider needs no key and keeps embedding work on your machine, but remains an explicit opt-in dependency.
 
 ## Tools
 

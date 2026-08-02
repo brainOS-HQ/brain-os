@@ -54,14 +54,19 @@ We follow a coordinated disclosure model:
 
 ## Recent Advisories
 
+### Unreleased — dependency hardening
+
+Embedding providers are optional peers instead of default dependencies. A default Brain OS install no longer inherits the native ONNX/Sharp dependency tree from `@huggingface/transformers`. Users who enable local embeddings install that provider explicitly and should evaluate its current advisories separately. OpenAI embeddings likewise require an explicit optional `openai` peer.
+
 ### 2026-05-22 — v0.4.2
 
 First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. All five were resolved in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field pinning safe minimums for downstream consumers. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
 
 ## Dependency Hygiene
 
-- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml) — any vulnerability fails CI before it can reach a release
-- The `overrides` field in `package.json` pins safe minimums for known-vulnerable transitive dependencies, so downstream consumers get the patched versions on fresh install
+- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml); Critical and High findings fail CI before release
+- Exact packed artifacts are audited in a clean consumer project. npm does not propagate a dependency package's `overrides`, so repository-only audit results are not presented as downstream protection
+- Embedding providers remain explicit optional peers so default consumers do not inherit their native or image-processing dependency trees
 - GitHub Dependabot is enabled for weekly transitive bump PRs
 
 ## Local State Considerations
