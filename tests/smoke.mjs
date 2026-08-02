@@ -268,6 +268,46 @@ test("semantic_recall: throws EmbeddingsNotConfiguredError when BRAIN_EMBEDDINGS
   );
 });
 
+test("default package keeps embedding SDKs non-auto-installed", async () => {
+  const { readFileSync } = await import("node:fs");
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+  for (const provider of ["@huggingface/transformers", "openai"]) {
+    assert.equal(pkg.dependencies?.[provider], undefined, `${provider} must not be a default dependency`);
+    assert.ok(pkg.peerDependencies?.[provider], `${provider} must remain an explicit optional peer`);
+    assert.equal(
+      pkg.peerDependenciesMeta?.[provider]?.optional,
+      true,
+      `${provider} must not be auto-installed`,
+    );
+  }
+});
+
+test("configured but missing optional embedding providers fail with an install action", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const distEmbeddings = join(process.cwd(), "dist", "utils", "embeddings.js");
+  const script = `
+    const { getProviderInfo } = await import(${JSON.stringify(distEmbeddings)});
+    console.log(JSON.stringify(await getProviderInfo()));
+  `;
+
+  for (const [mode, packageName] of [
+    ["local", "@huggingface/transformers"],
+    ["openai", "openai"],
+  ]) {
+    const env = { ...process.env, BRAIN_EMBEDDINGS: mode };
+    if (mode === "openai") env.OPENAI_API_KEY = "test-key";
+    const out = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+      env,
+      encoding: "utf8",
+    });
+    const info = JSON.parse(out);
+    assert.equal(info.ready, false);
+    assert.equal(info.provider, "none");
+    assert.match(info.error, new RegExp(`optional peer.*${packageName.replace("/", "\\/")}`));
+    assert.match(info.error, /npm install/);
+  }
+});
+
 // v0.5.0 regression — substring false positive in extractNegationConflicts.
 // Old code: proposed.includes("add") matched inside "address" → false directional caution.
 test("decision_check: word-boundary regex prevents substring false positive (e.g. 'add' inside 'address')", async () => {
