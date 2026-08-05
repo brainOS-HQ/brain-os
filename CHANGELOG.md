@@ -2,6 +2,26 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.9.2] — 2026-08-05
+
+> Security maintenance release. No new product features.
+
+### Security
+
+- Removed `@huggingface/transformers` from package metadata and temporarily disabled `BRAIN_EMBEDDINGS=local`. The provider's current dependency tree includes unresolved High-severity advisories through native ONNX/Sharp dependencies; local mode now fails closed with a clear explanation instead of recommending an unsafe installation.
+- Kept OpenAI embeddings as an explicit optional peer. Keyword recall and all non-semantic Brain OS tools continue to work without an embeddings provider.
+- Reduced the default dependency installation and refreshed the MCP SDK, lockfile, and security overrides so default and packed-consumer installs do not inherit the removed native dependency tree.
+- Hardened `project_evidence_scan` Git subprocesses by stripping inherited `GIT_*` routing and configuration variables before repository inspection, preventing ambient Git state from redirecting fixture or scan operations.
+
+### Compatibility
+
+- Node.js 20 or newer is now required. Under Node 18, the MCP SDK dependency range resolves an older `@hono/node-server` release affected by `GHSA-frvp-7c67-39w9`; the patched adapter requires Node 20.
+- Users who previously selected `BRAIN_EMBEDDINGS=local` must temporarily use keyword recall or install the optional OpenAI provider until an audited local backend is available.
+
+### Tests
+
+- Added regressions for the reduced default dependency set, unavailable local-provider behavior, optional OpenAI setup errors, and complete `GIT_*` environment isolation.
+
 ## [0.9.1] — 2026-07-06
 
 > Patch release: maintenance fixes only. No new private/cloud dogfooding features.

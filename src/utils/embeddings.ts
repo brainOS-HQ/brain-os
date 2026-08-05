@@ -37,17 +37,6 @@ type OpenAIClient = {
 
 type OpenAIConstructor = new (options: { apiKey: string }) => OpenAIClient;
 
-type LocalExtractor = (
-  text: string,
-  options: { pooling: "mean"; normalize: true }
-) => Promise<{ data: Float32Array | number[] }>;
-
-type LocalPipeline = (
-  task: "feature-extraction",
-  model: string,
-  options: { dtype: "fp32" }
-) => Promise<LocalExtractor>;
-
 export class EmbeddingsNotConfiguredError extends Error {
   constructor(reason: string) {
     super(reason);
@@ -55,15 +44,13 @@ export class EmbeddingsNotConfiguredError extends Error {
   }
 }
 
-const LOCAL_PROVIDER_PACKAGE = "@huggingface/transformers";
 const OPENAI_PROVIDER_PACKAGE = "openai";
 
 const CONFIG_HINT =
-  "Embeddings are optional and are not installed with brain-os. Install one provider beside brain-os, then configure it:\n" +
-  `  npm install ${LOCAL_PROVIDER_PACKAGE}\n` +
-  '  "env": { "BRAIN_EMBEDDINGS": "local" }\n' +
+  "Embeddings are optional and are not installed with brain-os. Install the OpenAI provider beside brain-os, then configure it:\n" +
   `  npm install ${OPENAI_PROVIDER_PACKAGE}\n` +
   '  "env": { "BRAIN_EMBEDDINGS": "openai", "OPENAI_API_KEY": "${OPENAI_API_KEY}" }\n' +
+  "  (BRAIN_EMBEDDINGS=local is temporarily unavailable pending an audited provider.)\n" +
   "Then restart your MCP client. Other tools (entity_update, decision_log, etc.) work without embeddings.";
 
 let activeProvider: { name: "local" | "openai"; embed: EmbedFn } | null = null;
@@ -116,7 +103,7 @@ async function initProvider(): Promise<void> {
       // (both arrive via process.env), so this is a nudge, not a hard check.
       process.stderr.write(
         "Brain OS: OpenAI embeddings active. Keep OPENAI_API_KEY out of plaintext config — " +
-          'reference it as "${OPENAI_API_KEY}" in your MCP env, or use BRAIN_EMBEDDINGS=local (no key).\n'
+          'reference it as "${OPENAI_API_KEY}" in your MCP env.\n'
       );
     } catch (e) {
       activeProvider = null;
@@ -128,37 +115,19 @@ async function initProvider(): Promise<void> {
   }
 
   if (mode === "local") {
-    try {
-      const providerModule = await import(LOCAL_PROVIDER_PACKAGE) as {
-        pipeline: LocalPipeline;
-      };
-      const { pipeline } = providerModule;
-      const extractor = await pipeline(
-        "feature-extraction",
-        "Xenova/all-MiniLM-L6-v2",
-        { dtype: "fp32" }
-      );
-      activeProvider = {
-        name: "local",
-        embed: async (text: string) => {
-          const output = await extractor(text.slice(0, 8000), {
-            pooling: "mean",
-            normalize: true,
-          });
-          return Array.from(output.data as Float32Array);
-        },
-      };
-    } catch (e) {
-      activeProvider = null;
-      initError = isMissingOptionalProvider(e, LOCAL_PROVIDER_PACKAGE)
-        ? `BRAIN_EMBEDDINGS=local requires the optional peer "${LOCAL_PROVIDER_PACKAGE}". Install it beside brain-os with: npm install ${LOCAL_PROVIDER_PACKAGE}`
-        : `Failed to initialize local embeddings: ${e instanceof Error ? e.message : String(e)}`;
-    }
+    // The latest @huggingface/transformers release still installs unresolved
+    // High-severity sharp/libvips and adm-zip advisories. Keep local mode
+    // fail-closed until an audited provider is available.
+    activeProvider = null;
+    initError =
+      "BRAIN_EMBEDDINGS=local is temporarily unavailable because its former provider " +
+      "has unresolved High-severity transitive vulnerabilities. Use BRAIN_EMBEDDINGS=openai " +
+      "or keyword recall until an audited local provider is available.";
     return;
   }
 
   activeProvider = null;
-  initError = `Unknown BRAIN_EMBEDDINGS value: "${mode}". Use "local" or "openai".`;
+  initError = `Unknown BRAIN_EMBEDDINGS value: "${mode}". Use "openai"; local mode is temporarily unavailable.`;
 }
 
 async function getProvider() {
