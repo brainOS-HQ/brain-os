@@ -56,7 +56,7 @@ We follow a coordinated disclosure model:
 
 ### Unreleased — dependency hardening
 
-Embedding providers are optional peers instead of default dependencies. A default Brain OS install no longer inherits the native ONNX/Sharp dependency tree from `@huggingface/transformers`. Users who enable local embeddings install that provider explicitly and should evaluate its current advisories separately. OpenAI embeddings likewise require an explicit optional `openai` peer.
+`@huggingface/transformers` was removed from Brain OS package metadata and local embeddings were temporarily disabled. Its latest release still pulls unresolved High-severity advisories through `onnxruntime-node`/`adm-zip` and `sharp`/libvips. Brain OS will not install or recommend that dependency until an audited upstream version or replacement is available. OpenAI embeddings remain an explicit optional peer; keyword recall and all non-semantic tools work without an embeddings provider.
 
 ### 2026-05-22 — v0.4.2
 
@@ -66,7 +66,7 @@ First `npm audit` pass on the published package surfaced 5 vulnerabilities, all 
 
 - `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml); Critical and High findings fail CI before release
 - Exact packed artifacts are audited in a clean consumer project. npm does not propagate a dependency package's `overrides`, so repository-only audit results are not presented as downstream protection
-- Embedding providers remain explicit optional peers so default consumers do not inherit their native or image-processing dependency trees
+- The local embeddings provider remains disabled while its dependency tree contains unresolved High-severity advisories
 - GitHub Dependabot is enabled for weekly transitive bump PRs
 
 ## Local State Considerations
