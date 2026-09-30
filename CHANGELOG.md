@@ -2,6 +2,27 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.10.0] — Unreleased
+
+> Verified Operational State (read-only) plus public-action risk hardening. No private reconciliation, Vault, governor, cloud implementation, or automatic state mutation is included.
+
+### Added
+
+- **`operational_state_check`** — an ephemeral, read-only MCP tool that observes a closed canary set (`package.name`, `package.version`, Git branch, and Git HEAD), compares it with optional claimed and desired state, and reports verified, drift, stale, conflict, or unavailable results with evidence pointers. Decision context remains visibly classified as human judgment.
+- **`brain-os reconcile --check [path]`** — CLI access to the same allowlisted verifier. It prints JSON to stdout and writes no repository or Brain OS state.
+- Boundary tests for package-file symlink escapes, bounded inputs, repeated deterministic checks, and zero persistent writes.
+
+### Security
+
+- Hardened `risk_assess` so a declared public destination or clear natural-language branch, commit, tag, repository, remote, or GitHub push cannot bypass the confirmation gate merely because the caller omitted the literal `git push` command.
+- Preserved the `0.9.2` dependency baseline: Node.js 20+, the patched MCP SDK and overrides, no default embedding provider, and local embeddings disabled while their former provider retains unresolved High-severity advisories.
+- Refreshed the exact lockfile to patched `fast-uri@3.1.8`, `hono@4.13.11`, `ip-address@10.7.2`, and `qs@6.16.0` resolutions after new advisories appeared; the candidate dependency graph audits clean.
+
+### Tests
+
+- Added regressions proving both natural-language branch pushes and literal `git push` commands remain confirmation-gated.
+- Added read-only operational-state coverage for verification, drift, stale claims, conflicting claims, unavailable sources, judgment separation, deterministic repeated checks, symlink containment, and no-write behavior.
+
 ## [0.9.2] — 2026-08-05
 
 > Security maintenance release. No new product features.

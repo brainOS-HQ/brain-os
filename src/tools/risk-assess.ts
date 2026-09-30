@@ -30,6 +30,11 @@ export interface RiskAssessResult {
   pre_filter_skipped: boolean;
 }
 
+// Accept both literal shell commands and clear natural-language descriptions.
+// Callers often describe the intended action instead of pasting the exact command.
+const GIT_PUSH_PATTERN =
+  /\bgit push\b|\bpush(?:es|ed|ing)?\b[^.\n]{0,120}\b(?:branch|commit|tag|repo(?:sitory)?|remote|github)\b|\b(?:branch|commit|tag|repo(?:sitory)?|remote|github)\b[^.\n]{0,120}\bpush(?:es|ed|ing)?\b/i;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Pre-filter: if none of these trigger patterns appear in the proposed action or
 // files touched, the action is low-risk and we skip the full guardian analysis.
@@ -39,7 +44,7 @@ export interface RiskAssessResult {
 // ──────────────────────────────────────────────────────────────────────────────
 const TRIGGER_PATTERNS: RegExp[] = [
   /\bnpm publish\b/i,
-  /\bgit push\b/i,
+  GIT_PUSH_PATTERN,
   /\bforce.?push\b/i,
   /push.*--force/i,
   /\bgit tag\b/i,
@@ -85,7 +90,7 @@ const PRIVATE_PATH_PATTERNS: RegExp[] = [
 const PUBLIC_TARGET_SIGNALS: RegExp[] = [
   /\bgithub\b/i,
   /\bnpm publish\b/i,
-  /\bgit push\b/i,
+  GIT_PUSH_PATTERN,
   /\bpublic repo(sitory)?\b/i,
   /\bpush.*origin\b/i,
   /\bremote.*public\b/i,
@@ -166,7 +171,7 @@ function detectRelease(
 function detectLocalToExternal(lower: string): string[] {
   const reasons: string[] = [];
 
-  if (/\bgit push\b/.test(lower) && !/force/.test(lower)) {
+  if (GIT_PUSH_PATTERN.test(lower) && !/force/.test(lower)) {
     reasons.push("Pushing commits to remote makes them visible to all collaborators.");
   }
   if (/\bsend.*email\b/.test(lower)) {
@@ -213,7 +218,9 @@ export async function assessRisk(input: RiskAssessInput): Promise<RiskAssessResu
     PRIVATE_PATH_PATTERNS.some((p) => p.test(f)),
   );
 
-  if (!triggerFromAction && !triggerFromFiles) {
+  // A caller-declared public destination must never bypass the full analysis,
+  // even when its action wording does not match a known verb.
+  if (!triggerFromAction && !triggerFromFiles && input.target_visibility !== "public") {
     await audit("risk_assess", "pre_filter_skip", input.proposed_action.slice(0, 100), {
       entity_id: input.entity_id,
     });
@@ -255,7 +262,7 @@ export async function assessRisk(input: RiskAssessInput): Promise<RiskAssessResu
   } else if (
     boundary_crossed === "release" ||
     boundary_crossed === "local_to_external" ||
-    /\bgit push\b/.test(lower) ||
+    GIT_PUSH_PATTERN.test(lower) ||
     /\bgit rm\b/.test(lower) ||
     /\bforce.?push\b|push.*--force/.test(lower)
   ) {
