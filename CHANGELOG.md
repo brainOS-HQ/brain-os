@@ -2,7 +2,7 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
-## [0.10.0] — Unreleased
+## [0.10.0] — 2026-10-01
 
 > Verified Operational State (read-only) plus public-action risk hardening. No private reconciliation, Vault, governor, cloud implementation, or automatic state mutation is included.
 
