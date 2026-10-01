@@ -16,6 +16,12 @@ if (command === "init") {
   console.log(result);
 } else if (command === "serve") {
   await import("../dist/index.js");
+} else if (command === "reconcile" && args.includes("--check")) {
+  const pathArg = args.slice(1).find((arg) => arg !== "--check" && !arg.startsWith("--"));
+  const rootPath = pathArg || process.cwd();
+  const { checkOperationalState } = await import("../dist/tools/operational-state-check.js");
+  const result = checkOperationalState({ root_path: rootPath });
+  console.log(JSON.stringify(result, null, 2));
 } else {
   console.log(`
 Brain OS : Operational state for AI agents
@@ -23,6 +29,8 @@ Brain OS : Operational state for AI agents
 Usage:
   brain-os init [path] [flags]   Initialize .brain/ and install agent instructions + slash commands
   brain-os serve                 Start MCP server (stdio)
+  brain-os reconcile --check [path]
+                                 Read-only check of package and Git operational state
 
 Options:
   --no-commands              Skip installing slash commands into .claude/commands/

@@ -30,6 +30,7 @@ AI agents are powerful inside a session, but long-running work has more state th
 - **Decisions** — log what was decided, why, what alternatives were rejected, and when to revisit
 - **Patterns** — detect recurring blockers, stale work, avoidance signals, and theme convergence
 - **Focus** — prioritize what to work on based on urgency, momentum, leverage, and staleness
+- **Verified operational state** — compare package/Git facts with claimed and desired state without changing anything
 - **Semantic recall** — search memory by meaning, not just ID
 
 Brain OS is an [MCP server](https://modelcontextprotocol.io) that works with any MCP-compatible client: Claude Code, Cursor, Zed, GitHub Copilot, OpenAI Codex, Windsurf, or any agent that speaks the protocol.
@@ -96,6 +97,18 @@ Add to your MCP config:
 }
 ```
 
+### Check live operational state
+
+Brain OS can independently read a small, explicit set of repository facts and show drift without updating memory or project state:
+
+```bash
+npx brain-os reconcile --check .
+```
+
+The matching MCP tool, `operational_state_check`, observes only `package.name`, `package.version`, the current Git branch, and Git HEAD. Optional claimed state, desired state, and decision context are returned as separate layers: observations may be verified, stale, conflicting, unavailable, or different from a claim, but the checker never chooses a winner or applies a change.
+
+The report is ephemeral JSON written to stdout. It creates no fact, evidence, issue, memory, entity, decision, plan, or audit record.
+
 ### Configure semantic search (optional)
 
 The `semantic_recall` tool needs an embeddings provider. Everything else (`entity_update`, `decision_log`, `plan_*`, etc.) works without one.
@@ -143,6 +156,7 @@ If `BRAIN_EMBEDDINGS` is unset, the OpenAI provider is missing, or local mode is
 | `context_resolve` | Resolve which entity the current work belongs to, from explicit mention / alias / files / lexical signals. Deterministic and confidence-scored — routes known context, never guesses intent. |
 | `focus_get` | Get prioritized recommendations on what to work on |
 | `project_evidence_scan` | Read-only scan of a repo's native operating state (STATE.md, FLAGS, HANDOFF, ROADMAP/PLAN/TODO, git activity, dirty files) for human gates, next moves, and do-not-touch — grounds focus in repo reality. |
+| `operational_state_check` | Ephemeral read-only comparison of allowlisted package/Git facts with optional claimed and desired state; reports evidence-backed drift/conflict without applying changes. |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |

@@ -17,6 +17,7 @@ import { checkDecision } from "./tools/decision-check.js";
 import { refreshDecision } from "./tools/decision-refresh.js";
 import { resolveContext } from "./tools/context-resolve.js";
 import { scanProjectEvidence } from "./tools/project-evidence-scan.js";
+import { checkOperationalState, OPERATIONAL_STATE_KEYS } from "./tools/operational-state-check.js";
 import { reviewDecisions } from "./tools/decision-review.js";
 import { assessRisk } from "./tools/risk-assess.js";
 import { guardAction } from "./tools/action-guard.js";
@@ -387,6 +388,35 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
     { readOnlyHint: true },
     async ({ root_path, entity_id }) => {
       const result = scanProjectEvidence({ root_path, entity_id });
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    "operational_state_check",
+    "Read-only Verified Operational State checker. Independently derives an allowlisted set of live repository facts (package name/version and Git branch/HEAD), compares them with optional claimed and desired state, and reports verified/drift/stale/conflict/unavailable results with evidence pointers. Decision context remains visibly separate human judgment. Ephemeral: writes no Brain OS, repository, issue, memory, decision, plan, evidence, version, or audit record.",
+    {
+      root_path: z.string().describe("Absolute path to the repository root. Only package.json name/version and fixed read-only Git metadata commands are observed."),
+      claims: z.array(z.object({
+        key: z.enum(OPERATIONAL_STATE_KEYS),
+        value: z.string().max(512),
+        observed_at: z.string().optional().describe("ISO timestamp for the claim. Required when freshness_ttl_seconds is provided."),
+        freshness_ttl_seconds: z.number().positive().optional(),
+        evidence: z.string().max(500).optional().describe("Caller-supplied claim provenance. It is displayed as claim context, never treated as observed evidence."),
+      })).max(12).optional(),
+      desired_state: z.array(z.object({
+        key: z.enum(OPERATIONAL_STATE_KEYS),
+        value: z.string().max(512),
+        why: z.string().max(500).optional(),
+      })).max(12).optional(),
+      decision_context: z.array(z.object({
+        id: z.string().max(120).optional(),
+        summary: z.string().max(500),
+      })).max(12).optional().describe("Optional decisions to show beside the check. They remain human judgment and are never verified as facts."),
+    },
+    { readOnlyHint: true },
+    async (input) => {
+      const result = checkOperationalState(input);
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );

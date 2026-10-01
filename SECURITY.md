@@ -6,8 +6,9 @@ Brain OS is operational state infrastructure for AI agents. State lives locally 
 
 | Version | Supported |
 | ------- | --------- |
-| 0.4.x   | ✅ Active |
-| < 0.4   | ❌ Please upgrade |
+| 0.10.x  | ✅ Active |
+| 0.9.x   | ⚠️ Security fixes only |
+| < 0.9   | ❌ Please upgrade |
 
 ## Reporting a Vulnerability
 
@@ -54,13 +55,21 @@ We follow a coordinated disclosure model:
 
 ## Recent Advisories
 
-### Unreleased — dependency hardening
+### Unreleased — v0.10.0 candidate
+
+The public-action guardian now treats caller-declared public destinations and clear natural-language branch, commit, tag, repository, remote, or GitHub push descriptions as guarded actions. Callers do not need to include the literal `git push` command for the confirmation requirement to fire.
+
+The new Verified Operational State checker is bounded to four allowlisted package and Git facts, resolves `package.json` within the requested root, sanitizes Git subprocesses, and reports only. It does not mutate repository or Brain OS state.
+
+The candidate lockfile resolves `fast-uri@3.1.8`, `hono@4.13.11`, `ip-address@10.7.2`, and `qs@6.16.0`, closing the current advisories while keeping the `0.9.2` dependency contract unchanged.
+
+### 2026-08-05 — v0.9.2 dependency hardening
 
 `@huggingface/transformers` was removed from Brain OS package metadata and local embeddings were temporarily disabled. Its latest release still pulls unresolved High-severity advisories through `onnxruntime-node`/`adm-zip` and `sharp`/libvips. Brain OS will not install or recommend that dependency until an audited upstream version or replacement is available. OpenAI embeddings remain an explicit optional peer; keyword recall and all non-semantic tools work without an embeddings provider.
 
 ### 2026-05-22 — v0.4.2
 
-First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. All five were resolved in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field pinning safe minimums for downstream consumers. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
+First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. Repository installs were repaired in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
 
 ## Dependency Hygiene
 
