@@ -8,6 +8,9 @@ All notable changes to Brain OS are documented here. This project uses [semantic
 
 - **`semantic_recall` is useful by default and truthful when embeddings fail.** It now runs hybrid recall over *current* canonical state: lexical candidates are always computed through the storage adapter (entities, active decisions, active patterns; archived/superseded/terminal records and memories are excluded), semantic ranking is added only when a provider is ready, and the two lists are fused with reciprocal-rank fusion and deduplicated by `source_kind` + `source_id`. Previously any provider problem (unset, `local`, missing SDK, rejected key, timeout) produced zero results even when the store had obvious matches.
 - Responses report `mode` (`hybrid` | `lexical`), `degraded`, `fallback_reason` (`not_configured` | `local_provider_unavailable` | `optional_package_missing` | `auth_failed` | `provider_error` | `index_incomplete`), provider readiness (`configured`, `ready`, `name`, `model`), and index accounting (`eligible`, `compatible`, `incompatible`, `stale`, `coverage`). Results carry bounded titles and snippets; the serialized response stays under 16KB.
+- Lexical recall no longer searches the append-only `evidence_of_progress` history (stale-history noise, unbounded scan). History belongs to `audit_log` / activity surfaces.
+- The `semantic_recall` tool description and `brain://status` routing hint now send recency questions to `audit_log`; semantic_recall is topic lookup only. Session recall is documented as semantic-only until sessions become canonically listable.
+- Every text sent to a provider (write path, rebuild, and query) passes through one 8,000-character bound, so the same record embeds identically regardless of path. Queries over 2,000 characters are cut and flagged (`query_truncated`) so the echoed query and the response stay bounded.
 - Stored vectors are validated against the active provider, model, and dimension (and for finite values) before cosine comparison. Incompatible or stale vectors are ignored and counted instead of silently skewing or crashing ranking. New vectors record `model` and `dimensions`; legacy entries validate by provider and vector length, so rotating a credential never forces a reindex.
 
 ### Added
@@ -17,6 +20,7 @@ All notable changes to Brain OS are documented here. This project uses [semantic
 
 ### Security
 
+- The raw `BRAIN_EMBEDDINGS` value is never echoed: `configured_mode` is normalized to `openai` | `local` | `unknown`, and the unknown-mode message no longer repeats the value (a credential pasted into the wrong variable stays out of tool output).
 - Provider errors are sanitized at the embeddings boundary: only the error class and HTTP status are kept, so SDK messages that echo key fragments (OpenAI's 401 text does) never reach tool output, `decision_check` responses, or stored state.
 - No external request is made unless `BRAIN_EMBEDDINGS=openai` is explicitly configured and the index has compatible vectors to compare. The `openai` package remains an optional peer; the disabled local provider chain (`@huggingface/transformers` / ONNX / Sharp) is not reintroduced and a test asserts it stays out of the build and manifest.
 

@@ -14,7 +14,7 @@ for (const sub of ["entities", "decisions", "patterns", "sessions", "memories"])
 }
 process.on("exit", () => rmSync(tmpBrain, { recursive: true, force: true }));
 
-const { recallByMeaning, RESPONSE_BYTE_BUDGET, MAX_RESULTS_CAP } = await import("../dist/tools/semantic-recall.js");
+const { recallByMeaning, RESPONSE_BYTE_BUDGET, MAX_RESULTS_CAP, QUERY_MAX_CHARS } = await import("../dist/tools/semantic-recall.js");
 const { createLocalJsonAdapter } = await import("../dist/storage/local-json.js");
 const emb = await import("../dist/utils/embeddings.js");
 const { rebuildEmbeddingsIndex, planRebuild } = await import("../dist/recall/rebuild.js");
@@ -444,4 +444,106 @@ test("response stays below 16KB even with many long matches", async () => {
   } finally {
     for (const id of ids) unlinkSync(join(tmpBrain, "entities", `${id}.json`));
   }
+});
+
+test("unbounded query: response stays under budget, query is cut and flagged, embed input bounded", async () => {
+  const seen = [];
+  emb.setEmbeddingsProviderOverride({ ...okProvider, embed: async (t) => { seen.push(t.length); return fakeVector(t); } });
+  const huge = "rate limiting " + "z".repeat(100_000);
+  const res = await recall({ query: huge, max_results: 5 });
+  assert.equal(res.query_truncated, true);
+  assert.equal(res.query.length, QUERY_MAX_CHARS);
+  assert.ok(Buffer.byteLength(JSON.stringify(res, null, 2), "utf-8") < RESPONSE_BYTE_BUDGET);
+  assert.ok(res.results.some((r) => r.source_id === "dec-001"), "lexical still matches the kept prefix");
+  assert.ok(seen.every((n) => n <= emb.EMBED_INPUT_MAX_CHARS), `embed inputs ${seen} exceed the bound`);
+  const normal = await recall({ query: "rate limiting" });
+  assert.equal(normal.query_truncated, undefined);
+  // Empty / non-string query never explodes.
+  const empty = await recall({ query: "" });
+  assert.equal(empty.count, 0);
+});
+
+test("unknown BRAIN_EMBEDDINGS value is never echoed (credential pasted into the wrong variable)", async () => {
+  emb.setEmbeddingsProviderOverride(undefined);
+  process.env.BRAIN_EMBEDDINGS = fakeKey("wrongvar");
+  emb.resetEmbeddingsProviderForTests();
+  try {
+    const res = await recall({ query: "rate limiting" });
+    assert.equal(res.mode, "lexical");
+    assert.equal(res.fallback_reason, "not_configured");
+    assert.equal(res.provider.configured, true);
+    assertNoKeyFragment(res);
+    assert.doesNotMatch(JSON.stringify(res), /wrongvar/);
+    const state = await emb.getProviderState();
+    assert.equal(state.configured_mode, "unknown");
+    assert.doesNotMatch(JSON.stringify(state), /wrongvar|sk-/);
+    const info = await emb.getProviderInfo();
+    assert.doesNotMatch(JSON.stringify(info), /wrongvar|sk-/);
+  } finally {
+    delete process.env.BRAIN_EMBEDDINGS;
+    emb.resetEmbeddingsProviderForTests();
+  }
+});
+
+test("write path, rebuild, and query embed through the same input bound", async () => {
+  const inputs = [];
+  const recording = { ...okProvider, embed: async (t) => { inputs.push(t); return fakeVector(t); } };
+  emb.setEmbeddingsProviderOverride(recording);
+  const longText = "sleep nap " + "w".repeat(30_000);
+  await seedEntity("long-record", "Long Record", { next_move: longText });
+  try {
+    // write path
+    const { updateEntity } = await import("../dist/tools/entity-update.js");
+    await updateEntity("long-record", { next_move: longText }, ctx);
+    await new Promise((r) => setTimeout(r, 20)); // embedEntity is fire-and-forget on the write path
+    const writeInput = inputs.find((t) => t.includes("Long Record"));
+    assert.ok(writeInput, "write path embedded the record");
+    const writeVector = JSON.parse(readFileSync(embeddingsPath, "utf-8")).find((e) => e.source_id === "long-record").vector;
+    // rebuild
+    inputs.length = 0;
+    await rebuildEmbeddingsIndex(ctx, { dryRun: false });
+    const rebuildInput = inputs.find((t) => t.includes("Long Record"));
+    assert.ok(rebuildInput, "rebuild embedded the record");
+    assert.equal(writeInput.length, emb.EMBED_INPUT_MAX_CHARS);
+    assert.equal(rebuildInput, writeInput, "identical provider input on both paths");
+    const rebuildVector = JSON.parse(readFileSync(embeddingsPath, "utf-8")).find((e) => e.source_id === "long-record").vector;
+    assert.deepEqual(rebuildVector, writeVector, "identical vector on both paths");
+    // query
+    inputs.length = 0;
+    await recall({ query: "nap ".repeat(1000) });
+    assert.ok(inputs.length === 1 && inputs[0].length <= emb.EMBED_INPUT_MAX_CHARS);
+  } finally {
+    unlinkSync(join(tmpBrain, "entities", "long-record.json"));
+    await rebuildEmbeddingsIndex(ctx, { dryRun: false });
+  }
+});
+
+test("historical evidence_of_progress is excluded from current-state lexical recall", async () => {
+  emb.setEmbeddingsProviderOverride(undefined);
+  emb.resetEmbeddingsProviderForTests();
+  // "migrated" occurs ONLY in docs-site.evidence_of_progress in the corpus.
+  const res = await recall({ query: "migrated", max_results: 10 });
+  assert.equal(res.results.length, 0, `history leaked into current-state recall: ${JSON.stringify(res.results)}`);
+  // The same record is still reachable through its current-state fields.
+  const current = await recall({ query: "onboarding guide", max_results: 10 });
+  assert.ok(current.results.some((r) => r.source_id === "docs-site"));
+});
+
+test("oversized query with zero results stays under the byte budget", async () => {
+  emb.setEmbeddingsProviderOverride(undefined);
+  emb.resetEmbeddingsProviderForTests();
+  const garbage = Array.from({ length: 20_000 }, (_, i) => `qzx${i}`).join(" "); // ~150KB, matches nothing
+  const res = await recall({ query: garbage, max_results: 20 });
+  assert.equal(res.count, 0);
+  assert.equal(res.query_truncated, true);
+  const bytes = Buffer.byteLength(JSON.stringify(res, null, 2), "utf-8");
+  assert.ok(bytes < RESPONSE_BYTE_BUDGET, `${bytes} bytes with zero results`);
+});
+
+test("session recall without a provider says it is semantic-only", async () => {
+  emb.setEmbeddingsProviderOverride(undefined);
+  emb.resetEmbeddingsProviderForTests();
+  const res = await recall({ query: "anything", source_kind: "session" });
+  assert.equal(res.count, 0);
+  assert.match(res.message ?? "", /semantic-only/);
 });

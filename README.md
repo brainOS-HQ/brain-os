@@ -124,6 +124,8 @@ The report is ephemeral JSON written to stdout. It creates no fact, evidence, is
 }
 ```
 
+Recall is topic lookup over *current* state. Recency questions ("what changed last session?") belong to `audit_log`, which is time-ordered. The append-only `evidence_of_progress` history is not searched. Session recall (`source_kind: "session"`) is semantic-only and returns nothing without a ready provider.
+
 `fallback_reason` is one of `not_configured`, `local_provider_unavailable`, `optional_package_missing`, `auth_failed`, `provider_error`, or `index_incomplete`. A provider failure (bad key, timeout) never empties the results — you still get the lexical matches, plus the reason. Provider error text is sanitized before it reaches the response; raw SDK messages (which can echo key fragments) are never returned or stored.
 
 Brain OS does **not** install an embeddings SDK by default. This keeps the core install small and avoids pulling native ONNX/Sharp dependencies into users who do not need semantic search. To enable hybrid mode, install the optional OpenAI provider beside `brain-os`, then add `BRAIN_EMBEDDINGS` to your MCP server env:

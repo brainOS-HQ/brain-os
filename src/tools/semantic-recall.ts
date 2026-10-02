@@ -62,11 +62,16 @@ export interface SemanticRecallResult {
   index: SemanticIndexStats & { coverage: { indexed: number; expected: number } };
   results: RecallHit[];
   count: number;
+  /** Results were dropped to keep the response under the byte budget. */
   truncated?: boolean;
+  /** The query exceeded QUERY_MAX_CHARS and was cut before processing. */
+  query_truncated?: boolean;
   message?: string;
 }
 
 export const MAX_RESULTS_CAP = 20;
+/** Queries longer than this are truncated (and flagged) so the echoed query, the lexical pass, and the embed input stay bounded. */
+export const QUERY_MAX_CHARS = 2000;
 export const DEFAULT_MAX_RESULTS = 5;
 /** Hard ceiling on the serialized tool response. */
 export const RESPONSE_BYTE_BUDGET = 16 * 1024;
@@ -93,7 +98,9 @@ export async function recallByMeaning(
   input: SemanticRecallInput,
   ctx: ToolContext,
 ): Promise<SemanticRecallResult> {
-  const query = (input.query ?? "").trim();
+  const rawQuery = typeof input.query === "string" ? input.query.trim() : "";
+  const queryTruncated = rawQuery.length > QUERY_MAX_CHARS;
+  const query = queryTruncated ? rawQuery.slice(0, QUERY_MAX_CHARS) : rawQuery;
   const maxResults = clampMax(input.max_results);
   const sourceKind = input.source_kind?.trim() || undefined;
   if (sourceKind && !SEMANTIC_KINDS.has(sourceKind)) {
@@ -146,6 +153,9 @@ export async function recallByMeaning(
   if (!providerState.ready) {
     fallbackReason = providerState.reason ?? "not_configured";
     message = providerState.message;
+    if (sourceKind === "session") {
+      message = "Session recall is semantic-only (sessions are not canonically listable, so there is no lexical fallback). " + (message ?? "");
+    }
   } else if (query) {
     try {
       const outcome = await semanticSearch(query, { k: maxResults * 4, threshold: SEMANTIC_THRESHOLD, sourceKind, isCurrent }, inspection);
@@ -222,6 +232,7 @@ export async function recallByMeaning(
   const degraded = mode === "lexical" || fallbackReason !== undefined;
   const base: SemanticRecallResult = {
     query,
+    ...(queryTruncated ? { query_truncated: true } : {}),
     mode,
     degraded,
     ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),

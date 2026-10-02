@@ -97,7 +97,10 @@ export function entityRecord(e: Entity): CanonicalRecord {
       str(e.next_move),
       str(e.blocked),
       str(e.last_decision),
-      str(e.evidence_of_progress),
+      // evidence_of_progress is deliberately NOT searched: it is an append-only
+      // history field. Current-state recall must not surface stale history
+      // noise or pay for scanning it; history belongs to audit_log / activity /
+      // progress surfaces.
       strs(e.open_questions).join(" | "),
       planSteps.join(" | "),
       [e.type, e.status, e.mode_reason].filter(Boolean).join(" "),

@@ -97,6 +97,11 @@ const OPENAI_PROVIDER_PACKAGE = "openai";
 const OPENAI_MODEL = "text-embedding-3-small";
 const OPENAI_DIMENSIONS = 384;
 const OPENAI_TIMEOUT_MS = 20_000;
+/**
+ * Single bound for EVERY text sent to a provider — write path, rebuild, and
+ * query alike — so the same record embeds identically regardless of path.
+ */
+export const EMBED_INPUT_MAX_CHARS = 8000;
 
 // Legacy entries (no `model` field) were only ever produced by these models.
 const LEGACY_DEFAULT_MODEL: Record<StoredEmbedding["provider"], string> = {
@@ -156,7 +161,7 @@ async function initProvider(): Promise<void> {
         embed: async (text: string) => {
           const res = await client.embeddings.create({
             model: OPENAI_MODEL,
-            input: text.slice(0, 30000),
+            input: text,
             dimensions: OPENAI_DIMENSIONS,
           });
           return res.data[0].embedding;
@@ -197,7 +202,9 @@ async function initProvider(): Promise<void> {
 
   activeProvider = null;
   initReason = "not_configured";
-  initError = `Unknown BRAIN_EMBEDDINGS value: "${mode}". Use "openai"; local mode is temporarily unavailable.`;
+  // The raw value is deliberately not echoed: a credential pasted into the
+  // wrong variable must never surface in tool output.
+  initError = 'Unknown BRAIN_EMBEDDINGS value (not echoed). Use "openai"; local mode is temporarily unavailable.';
 }
 
 async function getProvider(): Promise<EmbeddingsProvider | null> {
@@ -286,7 +293,7 @@ let providerFailureWarned = false;
 
 async function embedWithProvider(provider: EmbeddingsProvider, text: string): Promise<number[] | null> {
   try {
-    return await provider.embed(text);
+    return await provider.embed(text.slice(0, EMBED_INPUT_MAX_CHARS));
   } catch (e) {
     const sanitized = sanitizeProviderError(e);
     if (!providerFailureWarned) {
@@ -450,7 +457,7 @@ export async function embedAndStore(
   const provider = await getProvider();
   if (!provider) return;
 
-  const vector = await embedWithProvider(provider, content.slice(0, 8000));
+  const vector = await embedWithProvider(provider, content);
   if (!vector) return;
 
   const all = await loadEmbeddingsIndex();
@@ -620,10 +627,20 @@ export async function semanticRecall(
   return outcome.results;
 }
 
+export type ConfiguredMode = "openai" | "local" | "unknown";
+
+/** Normalize BRAIN_EMBEDDINGS to a closed set so the raw value is never echoed. */
+export function configuredMode(): ConfiguredMode | null {
+  const raw = process.env.BRAIN_EMBEDDINGS?.toLowerCase().trim();
+  if (!raw) return null;
+  return raw === "openai" || raw === "local" ? raw : "unknown";
+}
+
 export interface ProviderState {
   /** BRAIN_EMBEDDINGS is set to any value. */
   configured: boolean;
-  configured_mode: string | null;
+  /** Closed set — never the raw environment value. */
+  configured_mode: ConfiguredMode | null;
   /** A provider initialized and can embed. */
   ready: boolean;
   name: string;
@@ -635,7 +652,7 @@ export interface ProviderState {
 
 export async function getProviderState(): Promise<ProviderState> {
   const provider = await getProvider();
-  const configured = process.env.BRAIN_EMBEDDINGS?.toLowerCase().trim() ?? null;
+  const configured = configuredMode();
   if (provider) {
     return {
       configured: providerOverride !== undefined ? true : configured !== null,
