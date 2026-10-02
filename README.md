@@ -166,7 +166,7 @@ npx brain-os embeddings rebuild --dry-run   # shows the item count and provider 
 npx brain-os embeddings rebuild             # embeds current entities, active decisions, and active patterns, then replaces the index atomically
 ```
 
-Rotating `OPENAI_API_KEY` does not require a rebuild: compatibility depends on provider, model, and dimension only.
+Rotating `OPENAI_API_KEY` does not require a rebuild: compatibility depends on provider, model, dimension, and the text projection that produced the vector. Entity vectors written by earlier versions were built from a projection that included `evidence_of_progress` history, so after upgrading they are reported as incompatible until you run `brain-os embeddings rebuild`.
 
 > **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell and reference it from the MCP process environment.
 

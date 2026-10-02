@@ -100,6 +100,7 @@ const SYNONYMS = [
   ["rate", "limit", "limiting", "throttle", "throttling"],
   ["docs", "documentation", "guide", "onboarding"],
   ["deploy", "deploys", "release", "ship"],
+  ["migrated", "migration"], // appears ONLY in docs-site.evidence_of_progress
 ];
 function fakeVector(text) {
   const v = new Array(DIMS).fill(0);
@@ -124,6 +125,15 @@ const timeoutProvider = {
   ...okProvider,
   embed: async () => { const e = new Error(`Request timed out. ${FAKE_KEY_LEAK}`); e.name = "APIConnectionTimeoutError"; throw e; },
 };
+
+async function waitFor(predicate, { timeoutMs = 5000, intervalMs = 10, label = "condition" } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`timed out after ${timeoutMs}ms waiting for ${label}`);
+}
 
 function assertNoKeyFragment(obj) {
   const text = JSON.stringify(obj);
@@ -369,10 +379,13 @@ test("stale and wrong-dimension vectors are ignored without NaN or crash; counts
 test("credential rotation alone never invalidates the index; legacy entries validate by vector length", () => {
   const active = { name: "openai", model: "text-embedding-3-small", dimensions: 384 };
   const vec = new Array(384).fill(0.1);
-  const modern = { id: "x", source_kind: "entity", source_id: "a", content: "", vector: vec, provider: "openai", model: "text-embedding-3-small", dimensions: 384, created_at: "" };
+  // Modern entry: provider/model/dimensions/projection recorded. The key is not part of
+  // the entry or the provider descriptor — nothing to compare, so rotation is a no-op.
+  const modern = { id: "x", source_kind: "entity", source_id: "a", content: "", vector: vec, provider: "openai", model: "text-embedding-3-small", dimensions: 384, projection: emb.PROJECTION_VERSION.entity, created_at: "" };
   assert.equal(emb.classifyEntry(modern, active), "compatible");
-  // The key is not part of the entry or the provider descriptor — nothing to compare.
-  const legacy = { id: "y", source_kind: "entity", source_id: "b", content: "", vector: vec, provider: "openai", created_at: "" };
+  // Legacy entry (no model/dimensions/projection) for a kind whose projection is unchanged:
+  // assumed historical default model, validated by vector length.
+  const legacy = { id: "y", source_kind: "decision", source_id: "b", facet: "chosen", content: "", vector: vec, provider: "openai", created_at: "" };
   assert.equal(emb.classifyEntry(legacy, active), "compatible");
   assert.equal(emb.classifyEntry(legacy, { ...active, dimensions: 16 }), "incompatible");
   assert.equal(emb.classifyEntry(legacy, { ...active, model: "text-embedding-3-large" }), "incompatible");
@@ -495,10 +508,13 @@ test("write path, rebuild, and query embed through the same input bound", async 
     // write path
     const { updateEntity } = await import("../dist/tools/entity-update.js");
     await updateEntity("long-record", { next_move: longText }, ctx);
-    await new Promise((r) => setTimeout(r, 20)); // embedEntity is fire-and-forget on the write path
+    // embedEntity is fire-and-forget on the write path: wait on the observable
+    // effect (the stored vector), bounded, instead of a fixed sleep.
+    const readStored = () => JSON.parse(readFileSync(embeddingsPath, "utf-8")).find((e) => e.source_id === "long-record");
+    await waitFor(() => existsSync(embeddingsPath) && !!readStored(), { label: "write-path vector for long-record" });
     const writeInput = inputs.find((t) => t.includes("Long Record"));
     assert.ok(writeInput, "write path embedded the record");
-    const writeVector = JSON.parse(readFileSync(embeddingsPath, "utf-8")).find((e) => e.source_id === "long-record").vector;
+    const writeVector = readStored().vector;
     // rebuild
     inputs.length = 0;
     await rebuildEmbeddingsIndex(ctx, { dryRun: false });
@@ -546,4 +562,45 @@ test("session recall without a provider says it is semantic-only", async () => {
   const res = await recall({ query: "anything", source_kind: "session" });
   assert.equal(res.count, 0);
   assert.match(res.message ?? "", /semantic-only/);
+});
+
+test("hybrid mode: a term that exists only in evidence_of_progress history returns nothing", async () => {
+  emb.setEmbeddingsProviderOverride(okProvider);
+  await rebuildEmbeddingsIndex(ctx, { dryRun: false });
+  const res = await recall({ query: "migrated", max_results: 10 });
+  assert.equal(res.mode, "hybrid");
+  assert.equal(res.index.coverage.indexed, res.index.coverage.expected, "index complete after rebuild");
+  assert.equal(res.results.length, 0, `history leaked into hybrid recall: ${JSON.stringify(res.results)}`);
+  // The stored entity text itself carries no history.
+  const stored = JSON.parse(readFileSync(embeddingsPath, "utf-8")).find((e) => e.source_id === "docs-site");
+  assert.ok(stored && !stored.content.includes("Migrated"));
+  assert.equal(stored.projection, emb.PROJECTION_VERSION.entity);
+});
+
+test("legacy entity vectors (history projection) are incompatible until rebuilt; other kinds stay compatible", async () => {
+  const active = { name: "openai", model: "text-embedding-3-small", dimensions: DIMS };
+  const vec = new Array(DIMS).fill(0.1);
+  const legacyEntity = { id: "entity-a", source_kind: "entity", source_id: "a", content: "", vector: vec, provider: "openai", created_at: "" };
+  const legacyDecision = { ...legacyEntity, id: "decision-d", source_kind: "decision", source_id: "d" };
+  const legacySession = { ...legacyEntity, id: "session-s", source_kind: "session", source_id: "s" };
+  assert.equal(emb.classifyEntry(legacyEntity, active), "incompatible");
+  assert.equal(emb.classifyEntry(legacyDecision, active), "compatible");
+  assert.equal(emb.classifyEntry(legacySession, active), "compatible");
+  assert.equal(emb.classifyEntry({ ...legacyEntity, projection: emb.PROJECTION_VERSION.entity }, active), "compatible");
+  assert.equal(emb.classifyEntry({ ...legacyEntity, projection: "entity-v1" }, active), "incompatible");
+  assert.equal(emb.classifyEntry({ ...legacyEntity, source_kind: "memory" }, active), "incompatible");
+
+  // End to end: a legacy entity vector in the index is counted incompatible and reported as index_incomplete.
+  const stored = JSON.parse(readFileSync(embeddingsPath, "utf-8"));
+  const downgraded = stored.map((e) => (e.source_kind === "entity" ? (({ projection, ...rest }) => rest)(e) : e));
+  await emb.replaceEmbeddingsIndex(downgraded);
+  emb.setEmbeddingsProviderOverride(okProvider);
+  const res = await recall({ query: "rate limiting", max_results: 10 });
+  assert.equal(res.mode, "hybrid");
+  assert.equal(res.fallback_reason, "index_incomplete");
+  assert.ok(res.index.incompatible >= 3, `expected legacy entity vectors counted incompatible, got ${JSON.stringify(res.index)}`);
+  assert.ok(res.results.some((r) => r.source_id === "widget-api"), "lexical still carries the entity");
+  await rebuildEmbeddingsIndex(ctx, { dryRun: false });
+  const after = await recall({ query: "rate limiting", max_results: 10 });
+  assert.equal(after.fallback_reason, undefined);
 });
