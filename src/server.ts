@@ -21,7 +21,6 @@ import { checkOperationalState, OPERATIONAL_STATE_KEYS } from "./tools/operation
 import { reviewDecisions } from "./tools/decision-review.js";
 import { assessRisk } from "./tools/risk-assess.js";
 import { guardAction } from "./tools/action-guard.js";
-import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 import { createLocalJsonAdapter } from "./storage/local-json.js";
 import type { StorageAdapter, ToolContext } from "./storage/adapter.js";
@@ -240,20 +239,19 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
   if (!opts?.skipTools?.includes("semantic_recall")) {
     server.tool(
       "semantic_recall",
-      "Call this when the user asks what changed last session, what happened recently, or needs to find a decision/entity by description rather than exact name. Searches memory by meaning using semantic similarity. Use BEFORE reading git log or commit history for session-level context questions.",
+      "Call this when the user asks what changed last session, what happened recently, or needs to find a decision/entity/pattern by description rather than exact name. Hybrid recall over CURRENT canonical state: lexical matching through the store always runs; semantic ranking is added when an embeddings provider is configured and ready, and the two are fused by rank. Never returns archived/superseded records or memories. The response says which mode ran (`mode`), whether it degraded (`degraded`, `fallback_reason`), provider readiness, and index coverage. Use BEFORE reading git log or commit history for session-level context questions.",
       {
         query: z.string().describe("Natural language query — e.g. 'that decision about pricing' or 'projects related to memory systems'"),
         source_kind: z.enum(["entity", "decision", "pattern", "session"]).optional().describe("Filter by type. Omit to search everything."),
-        max_results: z.number().optional().describe("Max results to return (default 5)"),
+        max_results: z.number().optional().describe("Max results to return (default 5, max 20)"),
       },
       { readOnlyHint: true },
       async ({ query, source_kind, max_results }) => {
-        const providerInfo = await getProviderInfo();
-        const result = await recallByMeaning(query, source_kind, max_results);
+        const result = await recallByMeaning({ query, source_kind, max_results }, ctx);
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ ...result, provider: providerInfo.provider }, null, 2),
+            text: JSON.stringify(result, null, 2),
           }],
         };
       }

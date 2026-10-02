@@ -111,9 +111,22 @@ The report is ephemeral JSON written to stdout. It creates no fact, evidence, is
 
 ### Configure semantic search (optional)
 
-The `semantic_recall` tool needs an embeddings provider. Everything else (`entity_update`, `decision_log`, `plan_*`, etc.) works without one.
+`semantic_recall` works out of the box. Without an embeddings provider it runs in **lexical mode**: it searches your current entities, decisions, and patterns through the store and ranks them deterministically. With a provider it runs in **hybrid mode**: the same lexical candidates are fused with semantic (embedding) ranking, so paraphrases and "that decision about…" queries also hit. Every response says which mode ran:
 
-Brain OS does **not** install an embeddings SDK by default. This keeps the core install small and avoids pulling native ONNX/Sharp dependencies into users who do not need semantic search. Install the optional OpenAI provider beside `brain-os`, then add `BRAIN_EMBEDDINGS` to your MCP server env:
+```json
+{
+  "mode": "lexical",
+  "degraded": true,
+  "fallback_reason": "not_configured",
+  "provider": { "configured": false, "ready": false, "name": "none", "model": null },
+  "index": { "eligible": 0, "compatible": 0, "incompatible": 0, "stale": 0, "coverage": { "indexed": 0, "expected": 12 } },
+  "results": [ ... ]
+}
+```
+
+`fallback_reason` is one of `not_configured`, `local_provider_unavailable`, `optional_package_missing`, `auth_failed`, `provider_error`, or `index_incomplete`. A provider failure (bad key, timeout) never empties the results — you still get the lexical matches, plus the reason. Provider error text is sanitized before it reaches the response; raw SDK messages (which can echo key fragments) are never returned or stored.
+
+Brain OS does **not** install an embeddings SDK by default. This keeps the core install small and avoids pulling native ONNX/Sharp dependencies into users who do not need semantic search. To enable hybrid mode, install the optional OpenAI provider beside `brain-os`, then add `BRAIN_EMBEDDINGS` to your MCP server env:
 
 ```bash
 npm install brain-os openai
@@ -136,10 +149,22 @@ Then configure the provider in your MCP server environment:
 
 | Mode | What it does | Setup |
 |------|--------------|-------|
-| `local` | Temporarily unavailable while the former provider carries unresolved High-severity transitive advisories. | Use keyword recall or the OpenAI provider until an audited local backend ships. |
-| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Install `openai`, set `BRAIN_EMBEDDINGS=openai`, then reference `OPENAI_API_KEY` from your shell environment. |
+| *(unset)* | Lexical recall over current state. No network, no install. | Nothing. |
+| `local` | Temporarily unavailable while the former provider carries unresolved High-severity transitive advisories. Falls back to lexical recall. | Use lexical recall or the OpenAI provider until an audited local backend ships. |
+| `openai` | Hybrid recall: lexical + `text-embedding-3-small` (384 dims) via the OpenAI API. Costs ~$0.02 per million tokens. | Install `openai`, set `BRAIN_EMBEDDINGS=openai`, then reference `OPENAI_API_KEY` from your shell environment. |
 
-If `BRAIN_EMBEDDINGS` is unset, the OpenAI provider is missing, or local mode is requested, `semantic_recall` returns a clear setup error. No silent provider install, model download, or API call occurs. Core tools continue working normally.
+No external request is made unless `BRAIN_EMBEDDINGS=openai` is explicitly set and the index has something to compare against.
+
+#### Rebuilding the semantic index
+
+Stored vectors are validated against the active provider, model, and dimension before they are compared; incompatible or stale vectors (a changed model, an archived record) are ignored and counted in `index`. When current records lack a compatible vector the response reports `index_incomplete`. Rebuilding is always explicit — it never runs on its own:
+
+```bash
+npx brain-os embeddings rebuild --dry-run   # shows the item count and provider status; no API call, no write
+npx brain-os embeddings rebuild             # embeds current entities, active decisions, and active patterns, then replaces the index atomically
+```
+
+Rotating `OPENAI_API_KEY` does not require a rebuild: compatibility depends on provider, model, and dimension only.
 
 > **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell and reference it from the MCP process environment.
 
@@ -160,7 +185,7 @@ If `BRAIN_EMBEDDINGS` is unset, the OpenAI provider is missing, or local mode is
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |
-| `semantic_recall` | Search memory by meaning using natural language |
+| `semantic_recall` | Hybrid recall over current state: lexical always, semantic ranking when a provider is ready; reports mode and fallback reason |
 | `audit_log` | Read the full mutation history — what changed, when, by whom |
 | `wrap_check` | Detect whether meaningful state changes have accumulated since the last wrap |
 | `wrap_auto` | Non-interactive safety-net wrap: applies low-risk fields and stages high-risk changes for review |
@@ -251,7 +276,7 @@ Current coverage (regression + happy-path):
 - `decision_refresh` — clears dangling `superseded_by` when status transitions away from `superseded`
 - `plan_advance` — no over-promotion when an active step already exists
 - `entity_update` — apply diff and record changes, create missing entity, `mode_reason` required when parking, status-only updates apply, guarded ranking skips are visible
-- `semantic_recall` — throws `EmbeddingsNotConfiguredError` (not generic Error) when `BRAIN_EMBEDDINGS` is unset
+- `semantic_recall` — lexical results survive every provider state (unset, `local`, missing SDK, mocked 401, mocked timeout) with truthful `mode` / `degraded` / `fallback_reason`; paraphrase-only hits appear in hybrid mode; rank fusion is deterministic; archived/superseded records and memories never leak; stale or wrong-dimension vectors are ignored without NaN; `source_kind` / `max_results` enforced; response stays under 16KB; `embeddings rebuild --dry-run` writes nothing and the real rebuild replaces the index atomically. A synthetic recall eval (`npm run recall-eval`) reports hit@3 / MRR in lexical and mocked-hybrid modes.
 - Store resolution — fails closed in a storeless cwd instead of silently creating an empty `.brain/`
 
 Known gaps (no direct coverage yet): `focus_get` scoring, `pattern_detect` heuristics, `memory_*`, `plan_set/add/read`, and the `brain://status` resource. Expanding the suite is on the roadmap.

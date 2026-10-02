@@ -19,7 +19,8 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "serve": "node dist/index.js",
-    "test": "npm run build && node --test tests/smoke.mjs",
+    "test": "npm run build && node --test tests/smoke.mjs tests/semantic-recall.mjs",
+    "recall-eval": "node tests/recall-eval.mjs",
     "privacy-scan": "node scripts/privacy-scan.mjs --git",
     "prepublishOnly": "npm run build && node scripts/privacy-scan.mjs --pack",
     "metrics": "node scripts/fetch-metrics.mjs"
