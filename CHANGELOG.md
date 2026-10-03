@@ -2,7 +2,9 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.10.1] — 2026-10-03
+
+> Maintenance release: semantic recall reliability. No new product surface beyond the explicit `embeddings rebuild` command; no private, cloud, or Vault code.
 
 ### Fixed
 
