@@ -2,6 +2,31 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.10.1] — 2026-10-03
+
+> Maintenance release: semantic recall reliability. No new product surface beyond the explicit `embeddings rebuild` command; no private, cloud, or Vault code.
+
+### Fixed
+
+- **`semantic_recall` is useful by default and truthful when embeddings fail.** It now runs hybrid recall over *current* canonical state: lexical candidates are always computed through the storage adapter (entities, active decisions, active patterns; archived/superseded/terminal records and memories are excluded), semantic ranking is added only when a provider is ready, and the two lists are fused with reciprocal-rank fusion and deduplicated by `source_kind` + `source_id`. Previously any provider problem (unset, `local`, missing SDK, rejected key, timeout) produced zero results even when the store had obvious matches.
+- Responses report `mode` (`hybrid` | `lexical`), `degraded`, `fallback_reason` (`not_configured` | `local_provider_unavailable` | `optional_package_missing` | `auth_failed` | `provider_error` | `index_incomplete`), provider readiness (`configured`, `ready`, `name`, `model`), and index accounting (`eligible`, `compatible`, `incompatible`, `stale`, `coverage`). Results carry bounded titles and snippets; the serialized response stays under 16KB.
+- `evidence_of_progress` is excluded from the entity embedding projection as well as from lexical recall, so history influences neither mode. Stored vectors now record their projection version; entity vectors from earlier versions (built with history) are treated as incompatible until `brain-os embeddings rebuild` is run.
+- Lexical recall no longer searches the append-only `evidence_of_progress` history (stale-history noise, unbounded scan). History belongs to `audit_log` / activity surfaces.
+- The `semantic_recall` tool description and `brain://status` routing hint now send recency questions to `audit_log`; semantic_recall is topic lookup only. Session recall is documented as semantic-only until sessions become canonically listable.
+- Every text sent to a provider (write path, rebuild, and query) passes through one 8,000-character bound, so the same record embeds identically regardless of path. Queries over 2,000 characters are cut and flagged (`query_truncated`) so the echoed query and the response stay bounded.
+- Stored vectors are validated against the active provider, model, and dimension (and for finite values) before cosine comparison. Incompatible or stale vectors are ignored and counted instead of silently skewing or crashing ranking. New vectors record `model` and `dimensions`; legacy entries validate by provider and vector length, so rotating a credential never forces a reindex.
+
+### Added
+
+- **`brain-os embeddings rebuild [--dry-run]`** — explicit, atomic rebuild of `.brain/embeddings.json` from current state. The plan (item count, provider, model, dimension) is printed before any external call; `--dry-run` makes no API call and writes nothing; the real rebuild replaces the index via temp-file + rename and aborts without writing if the provider fails. It never runs automatically.
+- `tests/semantic-recall.mjs` (16 regressions, mocked provider, no network) and a synthetic recall eval (`npm run recall-eval`) that reports hit@3 / MRR in lexical and mocked-hybrid modes.
+
+### Security
+
+- The raw `BRAIN_EMBEDDINGS` value is never echoed: `configured_mode` is normalized to `openai` | `local` | `unknown`, and the unknown-mode message no longer repeats the value (a credential pasted into the wrong variable stays out of tool output).
+- Provider errors are sanitized at the embeddings boundary: only the error class and HTTP status are kept, so SDK messages that echo key fragments (OpenAI's 401 text does) never reach tool output, `decision_check` responses, or stored state.
+- No external request is made unless `BRAIN_EMBEDDINGS=openai` is explicitly configured and the index has compatible vectors to compare. The `openai` package remains an optional peer; the disabled local provider chain (`@huggingface/transformers` / ONNX / Sharp) is not reintroduced and a test asserts it stays out of the build and manifest.
+
 ## [0.10.0] — 2026-10-01
 
 > Verified Operational State (read-only) plus public-action risk hardening. No private reconciliation, Vault, governor, cloud implementation, or automatic state mutation is included.

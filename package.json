@@ -1,6 +1,6 @@
 {
   "name": "brain-os",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves. The persistent memory layer that stops agent amnesia.",
   "type": "module",
   "main": "dist/index.js",
@@ -19,7 +19,8 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "serve": "node dist/index.js",
-    "test": "npm run build && node --test tests/smoke.mjs",
+    "test": "npm run build && node --test tests/smoke.mjs tests/semantic-recall.mjs",
+    "recall-eval": "node tests/recall-eval.mjs",
     "privacy-scan": "node scripts/privacy-scan.mjs --git",
     "prepublishOnly": "npm run build && node scripts/privacy-scan.mjs --pack",
     "metrics": "node scripts/fetch-metrics.mjs"
