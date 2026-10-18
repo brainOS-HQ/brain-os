@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS - AI remembers conversations but forgets project state" width="100%" />
+  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS: Forget your decisions? Brain OS remembers." width="100%" />
 </p>
 
 <p align="center">
