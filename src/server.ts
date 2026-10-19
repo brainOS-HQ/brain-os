@@ -21,7 +21,6 @@ import { checkOperationalState, OPERATIONAL_STATE_KEYS } from "./tools/operation
 import { reviewDecisions } from "./tools/decision-review.js";
 import { assessRisk } from "./tools/risk-assess.js";
 import { guardAction } from "./tools/action-guard.js";
-import { getProviderInfo } from "./utils/embeddings.js";
 import { generateStatusBrief } from "./resources/status.js";
 import { createLocalJsonAdapter } from "./storage/local-json.js";
 import type { StorageAdapter, ToolContext } from "./storage/adapter.js";
@@ -240,20 +239,19 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
   if (!opts?.skipTools?.includes("semantic_recall")) {
     server.tool(
       "semantic_recall",
-      "Call this when the user asks what changed last session, what happened recently, or needs to find a decision/entity by description rather than exact name. Searches memory by meaning using semantic similarity. Use BEFORE reading git log or commit history for session-level context questions.",
+      "Topic-based lookup over CURRENT canonical state. Call this when the user describes a decision, project, or pattern by meaning rather than exact name (\"that decision about pricing\", \"the project that handles invoices\"). NOT for recency: \"what changed recently / last session / latest update\" belongs to audit_log (time-ordered history) and activity surfaces, never to this tool. Lexical matching through the store always runs over entities, active decisions, and active patterns; semantic ranking is added when an embeddings provider is configured and ready, and the two are fused by rank. Archived/superseded records and memories are never returned. Session recall (source_kind=session) is semantic-only — there is no lexical fallback for sessions until they become canonically listable — so it returns nothing without a ready provider. The response states which mode ran (`mode`), whether it degraded (`degraded`, `fallback_reason`), provider readiness, and index coverage.",
       {
         query: z.string().describe("Natural language query — e.g. 'that decision about pricing' or 'projects related to memory systems'"),
         source_kind: z.enum(["entity", "decision", "pattern", "session"]).optional().describe("Filter by type. Omit to search everything."),
-        max_results: z.number().optional().describe("Max results to return (default 5)"),
+        max_results: z.number().optional().describe("Max results to return (default 5, max 20)"),
       },
       { readOnlyHint: true },
       async ({ query, source_kind, max_results }) => {
-        const providerInfo = await getProviderInfo();
-        const result = await recallByMeaning(query, source_kind, max_results);
+        const result = await recallByMeaning({ query, source_kind, max_results }, ctx);
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ ...result, provider: providerInfo.provider }, null, 2),
+            text: JSON.stringify(result, null, 2),
           }],
         };
       }

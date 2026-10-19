@@ -82,7 +82,7 @@ export async function generateStatusBrief(): Promise<string> {
     "  patterns/recurring issues        → pattern_detect",
     "  is decision X still valid?       → decision_review",
     "  should I do X? / conflicts?      → decision_check",
-    "  what changed last session?       → semantic_recall",
+    "  what changed last session?       → audit_log (time-ordered); semantic_recall is topic lookup only",
     "Brain OS holds decisions, blockers, and momentum not visible in code.",
     "",
     `Entities: ${active.length} active, ${incubating.length} incubating, ${parked.length} parked, ${archived.length} archived`,
