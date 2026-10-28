@@ -178,7 +178,12 @@ export async function setupBrain(input: BrainSetupInput, env: BrainSetupEnv): Pr
   // A write must match a preview this server issued for the same folder, options, and plan.
   const pending = input.preview_token ? pendingPreviews.get(input.preview_token) : undefined;
   if (!input.target_dir || !pending) {
-    return preview("No valid preview_token: nothing was written. Show this preview to the user first.");
+    return preview(
+      input.preview_token
+        ? "This preview_token is unknown to this server: it expired, was already used, or the server restarted " +
+          "since the preview (tokens live in server memory). Nothing was written. Show this new preview to the user and ask again."
+        : "No preview_token: nothing was written. Show this preview to the user first.",
+    );
   }
   if (pending.target !== target || pending.fingerprint !== fingerprint) {
     pendingPreviews.delete(input.preview_token!);
