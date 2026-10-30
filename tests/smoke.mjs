@@ -1340,3 +1340,184 @@ test("store resolution fails closed: no silent .brain/ creation in a storeless c
 
   rmSync(storelessCwd, { recursive: true, force: true });
 });
+
+// ── brain_setup: guarded, two-step project setup over MCP ──
+const { setupBrain } = await import("../dist/tools/brain-setup.js");
+const { homedir: _homedir } = await import("node:os");
+const { existsSync, symlinkSync, realpathSync } = await import("node:fs");
+
+function freshProject() {
+  return realpathSync(mkdtempSync(join(tmpdir(), "brain-os-setup-")));
+}
+
+test("brain_setup: existing store → already_set_up, writes nothing", async () => {
+  const proj = freshProject();
+  const r = await setupBrain({ target_dir: proj, confirm: true }, { roots: [proj], existingBrainDir: "/somewhere/.brain" });
+  assert.equal(r.status, "already_set_up");
+  assert.ok(!existsSync(join(proj, ".brain")));
+  rmSync(proj, { recursive: true, force: true });
+});
+
+test("brain_setup: no roots and no target → needs_target", async () => {
+  const r = await setupBrain({}, { roots: null, existingBrainDir: null });
+  assert.equal(r.status, "needs_target");
+});
+
+test("brain_setup: several roots and no target → needs_target listing them", async () => {
+  const a = freshProject(), b = freshProject();
+  const r = await setupBrain({}, { roots: [a, b], existingBrainDir: null });
+  assert.equal(r.status, "needs_target");
+  assert.deepEqual(r.roots, [a, b]);
+  rmSync(a, { recursive: true, force: true });
+  rmSync(b, { recursive: true, force: true });
+});
+
+test("brain_setup: preview proposes the single root, issues a token, writes nothing", async () => {
+  const proj = freshProject();
+  const r = await setupBrain({}, { roots: [proj], existingBrainDir: null });
+  assert.equal(r.status, "needs_confirmation");
+  assert.equal(r.target_dir, proj);
+  assert.ok(r.question.includes(proj));
+  assert.ok(typeof r.preview_token === "string" && r.preview_token.length > 10);
+  assert.ok(r.plan.create.includes(".brain/"));
+  assert.ok(r.plan.create.includes("AGENTS.md"));
+  assert.equal(r.plan.canonicalInstructions, "AGENTS.md");
+  assert.deepEqual(r.plan.outsideProject, [], "no home-folder writes by default");
+  assert.ok(!existsSync(join(proj, ".brain")), "preview must not write");
+  rmSync(proj, { recursive: true, force: true });
+});
+
+test("brain_setup: confirm without a preview token writes nothing", async () => {
+  const proj = freshProject();
+  const env = { roots: [proj], existingBrainDir: null };
+  const noToken = await setupBrain({ target_dir: proj, confirm: true }, env);
+  assert.equal(noToken.status, "needs_confirmation");
+  assert.ok(noToken.note.includes("nothing was written"));
+  const forged = await setupBrain({ target_dir: proj, confirm: true, preview_token: "made-up" }, env);
+  assert.equal(forged.status, "needs_confirmation");
+  const noTarget = await setupBrain({ confirm: true, preview_token: noToken.preview_token }, env);
+  assert.equal(noTarget.status, "needs_confirmation");
+  assert.ok(!existsSync(join(proj, ".brain")));
+  rmSync(proj, { recursive: true, force: true });
+});
+
+test("brain_setup: token is bound to folder + options and is single-use", async () => {
+  const a = freshProject(), b = freshProject();
+  const env = { roots: [a, b], existingBrainDir: null };
+  const pa = await setupBrain({ target_dir: a }, env);
+  const wrongFolder = await setupBrain({ target_dir: b, confirm: true, preview_token: pa.preview_token }, env);
+  assert.equal(wrongFolder.status, "needs_confirmation");
+  assert.ok(!existsSync(join(b, ".brain")));
+
+  const pa2 = await setupBrain({ target_dir: a }, env);
+  const wrongOptions = await setupBrain({ target_dir: a, confirm: true, minimal: true, preview_token: pa2.preview_token }, env);
+  assert.equal(wrongOptions.status, "needs_confirmation");
+  assert.ok(!existsSync(join(a, ".brain")));
+
+  const pa3 = await setupBrain({ target_dir: a }, env);
+  assert.equal((await setupBrain({ target_dir: a, confirm: true, preview_token: pa3.preview_token }, env)).status, "ready");
+  rmSync(join(a, ".brain"), { recursive: true, force: true });
+  const reused = await setupBrain({ target_dir: a, confirm: true, preview_token: pa3.preview_token }, env);
+  assert.equal(reused.status, "needs_confirmation", "token must not work twice");
+  assert.ok(!existsSync(join(a, ".brain")));
+  rmSync(a, { recursive: true, force: true });
+  rmSync(b, { recursive: true, force: true });
+});
+
+test("brain_setup: files changing after preview invalidate the token", async () => {
+  const proj = freshProject();
+  const env = { roots: [proj], existingBrainDir: null };
+  const p = await setupBrain({ target_dir: proj }, env);
+  await writeFile(join(proj, "CLAUDE.md"), "# mine\n");
+  const r = await setupBrain({ target_dir: proj, confirm: true, preview_token: p.preview_token }, env);
+  assert.equal(r.status, "needs_confirmation");
+  assert.ok(!existsSync(join(proj, ".brain")));
+  rmSync(proj, { recursive: true, force: true });
+});
+
+test("brain_setup: rejects relative, home, root, missing, and out-of-workspace targets", async () => {
+  const root = freshProject(), outside = freshProject();
+  const env = { roots: [root], existingBrainDir: null };
+  assert.equal((await setupBrain({ target_dir: "relative/dir" }, env)).status, "rejected");
+  assert.equal((await setupBrain({ target_dir: _homedir() }, { roots: null, existingBrainDir: null })).status, "rejected");
+  assert.equal((await setupBrain({ target_dir: "/" }, { roots: null, existingBrainDir: null })).status, "rejected");
+  assert.equal((await setupBrain({ target_dir: join(root, "nope") }, env)).status, "rejected");
+  assert.equal((await setupBrain({ target_dir: outside }, env)).status, "rejected");
+  assert.ok(!existsSync(join(outside, ".brain")));
+  rmSync(root, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
+test("brain_setup: a symlinked folder inside the workspace pointing outside is rejected", async () => {
+  const root = freshProject(), outside = freshProject();
+  symlinkSync(outside, join(root, "linked"));
+  const r = await setupBrain({ target_dir: join(root, "linked") }, { roots: [root], existingBrainDir: null });
+  assert.equal(r.status, "rejected");
+  assert.ok(r.reason.includes("outside the open workspace"));
+  assert.ok(!existsSync(join(outside, ".brain")));
+  rmSync(root, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
+test("brain_setup: a symlinked .claude pointing outside the project is rejected", async () => {
+  const proj = freshProject(), outside = freshProject();
+  symlinkSync(outside, join(proj, ".claude"));
+  const r = await setupBrain({ target_dir: proj }, { roots: [proj], existingBrainDir: null });
+  assert.equal(r.status, "rejected");
+  assert.ok(r.reason.includes(".claude"));
+  assert.ok(!existsSync(join(outside, "commands")));
+  rmSync(proj, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
+test("brain_setup: confirmed setup creates the store and activates it", async () => {
+  const proj = freshProject();
+  let activated = null;
+  const env = { roots: [proj], existingBrainDir: null, onCreated: (d) => { activated = d; } };
+  const p = await setupBrain({ target_dir: proj }, env);
+  const r = await setupBrain({ target_dir: proj, confirm: true, preview_token: p.preview_token }, env);
+  assert.equal(r.status, "ready");
+  assert.ok(r.report.includes("Ready."));
+  assert.ok(!r.report.includes("mcpServers"), "CLI-only footer must not appear over MCP");
+  assert.ok(existsSync(join(proj, ".brain", "decisions", "decisions.json")));
+  assert.ok(readFileSync(join(proj, "CLAUDE.md"), "utf-8").includes("](./AGENTS.md)"));
+  assert.equal(activated, join(proj, ".brain"));
+  rmSync(proj, { recursive: true, force: true });
+});
+
+test("brain_setup: user's own AGENTS.md is preserved; rules relocate and pointers follow", async () => {
+  const proj = freshProject();
+  const mine = "# My own agent rules\n";
+  await writeFile(join(proj, "AGENTS.md"), mine);
+  const env = { roots: [proj], existingBrainDir: null };
+  const p = await setupBrain({ target_dir: proj }, env);
+  assert.equal(p.plan.canonicalInstructions, ".claude/brain-os/AGENTS.md");
+  assert.ok(p.plan.preserve.includes("AGENTS.md"));
+  assert.ok(p.plan.needsIntegration.includes("AGENTS.md"));
+  const r = await setupBrain({ target_dir: proj, confirm: true, preview_token: p.preview_token }, env);
+  assert.equal(r.status, "ready");
+  assert.ok(r.report.includes("Needs a Brain OS line"));
+  assert.equal(readFileSync(join(proj, "AGENTS.md"), "utf-8"), mine, "existing AGENTS.md must be untouched");
+  const canonical = readFileSync(join(proj, ".claude/brain-os/AGENTS.md"), "utf-8");
+  assert.ok(canonical.includes("Agent operating instructions for projects using Brain OS."));
+  const claude = readFileSync(join(proj, "CLAUDE.md"), "utf-8");
+  assert.ok(claude.includes("](./.claude/brain-os/AGENTS.md)"), claude);
+  assert.ok(!/(^|[^/])AGENTS\.md/.test(claude.replace(/\.claude\/brain-os\/AGENTS\.md/g, "")), "no bare AGENTS.md refs left");
+  const copilot = readFileSync(join(proj, ".github/copilot-instructions.md"), "utf-8");
+  assert.ok(copilot.includes("](../.claude/brain-os/AGENTS.md)"), copilot.slice(0, 400));
+  for (const f of [".cursor/rules/brain-os.mdc", ".zed/rules.md", ".windsurfrules", ".github/copilot-instructions.md"]) {
+    const txt = readFileSync(join(proj, f), "utf-8").replace(/\.claude\/brain-os\/AGENTS\.md/g, "");
+    assert.ok(!txt.includes("AGENTS.md"), `${f} still references root AGENTS.md`);
+  }
+  rmSync(proj, { recursive: true, force: true });
+});
+
+test("brain_setup: an AGENTS.md written by Brain OS stays canonical", async () => {
+  const proj = freshProject();
+  const tpl = readFileSync(new URL("../templates/agent-instructions/AGENTS.md", import.meta.url), "utf-8");
+  await writeFile(join(proj, "AGENTS.md"), tpl);
+  const p = await setupBrain({ target_dir: proj }, { roots: [proj], existingBrainDir: null });
+  assert.equal(p.plan.canonicalInstructions, "AGENTS.md");
+  assert.deepEqual(p.plan.needsIntegration, []);
+  rmSync(proj, { recursive: true, force: true });
+});

@@ -27,7 +27,7 @@ let mcpServerRef: McpServer | null = null;
 // Fail-closed store resolution: the server must NEVER invent a store.
 // Falling back to join(cwd, ".brain") created empty stray stores wherever the
 // MCP server happened to start from, and tools then answered from that wrong
-// store. Creation is only legitimate via `brain-os init` or explicit BRAIN_DIR.
+// store. Creation is only legitimate via `brain-os init`, a user-confirmed brain_setup call, or explicit BRAIN_DIR.
 export class BrainStoreNotFoundError extends Error {
   constructor(searchedFrom: string) {
     super(
@@ -35,6 +35,7 @@ export class BrainStoreNotFoundError extends Error {
       `BRAIN_DIR is not set). Refusing to create one implicitly. To fix: ` +
       `set BRAIN_DIR to your existing .brain directory in the MCP server config, ` +
       `start the session from inside a Brain OS workspace, ` +
+      `call the brain_setup tool (asks the user to confirm the project folder first), ` +
       `or run \`npx brain-os init\` in the project root to create a new store.`
     );
     this.name = "BrainStoreNotFoundError";
@@ -78,6 +79,36 @@ async function resolveBrainDir(): Promise<string> {
 
 export function registerMcpServer(server: McpServer): void {
   mcpServerRef = server;
+}
+
+// Workspace folders the client exposes via MCP roots. null = no server
+// registered or the client doesn't support roots.
+export async function listFileRoots(): Promise<string[] | null> {
+  if (!mcpServerRef) return null;
+  try {
+    const result = await mcpServerRef.server.listRoots();
+    return (result.roots ?? [])
+      .filter((root) => root.uri.startsWith("file://"))
+      .map((root) => fileURLToPath(root.uri));
+  } catch {
+    return null;
+  }
+}
+
+// Existing store if one resolves, else null. Never creates one.
+export async function findExistingBrainDir(): Promise<string | null> {
+  try {
+    return await initBrainDir();
+  } catch (e) {
+    if (e instanceof BrainStoreNotFoundError) return null;
+    throw e;
+  }
+}
+
+// Point this process at a store that was just created by an explicit,
+// user-confirmed setup, so tools work without restarting the server.
+export function setBrainDir(brainDir: string): void {
+  cachedBrainDir = brainDir;
 }
 
 export async function initBrainDir(): Promise<string> {
