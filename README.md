@@ -61,41 +61,57 @@ That's the wedge: structured state with enforcement, so agents stop re-opening q
 
 Requires Node.js 20 or newer.
 
+### 1. Connect the server
+
+**Claude Code:**
+
+```bash
+claude mcp add brain-os -- npx -y brain-os serve
+```
+
+**Cursor** (`.cursor/mcp.json`) **and other MCP clients:**
+
+```json
+{
+  "mcpServers": {
+    "brain-os": {
+      "command": "npx",
+      "args": ["-y", "brain-os", "serve"]
+    }
+  }
+}
+```
+
+VS Code uses `.vscode/mcp.json` with a `"servers"` key and `"type": "stdio"` in place of `"mcpServers"`.
+
+### 2. Set up the project, from chat or from the terminal
+
+**From chat (no terminal):** open your project and ask the agent:
+
+```
+Set up Brain OS in this project.
+```
+
+The agent calls `brain_setup`. It shows the folder and the exact files it would create, and writes nothing until you say yes. Your existing `AGENTS.md` / `CLAUDE.md` are never overwritten. If you already have your own `AGENTS.md`, the Brain OS rules go to `.claude/brain-os/AGENTS.md`, and the setup lists any of your files that need a one-line pointer to it. Nothing is written outside the project.
+
+**From the terminal:**
+
 ```bash
 # In your project
 npx brain-os init
 ```
 
-This does three things:
+Either way, setup does three things:
 
 1. **Creates a `.brain/` directory** with your entity, decision, and pattern stores.
-2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/brain:focus`, `/brain:decide`, etc. directly in Claude Code. Bare aliases (`/focus`, `/decide`, etc.) install alongside for brevity.
-3. **Drops agent-instructions pointer files** so any MCP-compatible client behaves consistently: `AGENTS.md` (canonical, cross-tool) plus thin pointer files for Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md`), Cursor (`.cursor/rules/brain-os.mdc`), Zed (`.zed/rules.md`), and Windsurf (`.windsurfrules`).
+2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/brain:focus`, `/brain:decide`, etc. directly in Claude Code. Bare aliases (`/focus`, `/decide`, etc.) install alongside them.
+3. **Adds agent instructions** so every MCP-compatible client behaves the same way. `AGENTS.md` is the canonical file. Thin pointer files cover Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md`), Cursor (`.cursor/rules/brain-os.mdc`), Zed (`.zed/rules.md`), and Windsurf (`.windsurfrules`).
 
-Flags:
+Flags (`brain_setup` takes the same options as `minimal` / `include_commands`):
 
-- `npx brain-os init --minimal` — install only `AGENTS.md` + `CLAUDE.md`, skip the other client pointers (clean-repo mode)
-- `npx brain-os init --no-commands` — skip slash commands (MCP server only)
-- `npx brain-os init --no-agent-instructions` — skip all agent-instructions pointer files
-
-### Connect to Claude Code
-
-```bash
-claude mcp add brain-os -- npx brain-os serve
-```
-
-### Connect to Cursor / other MCP clients
-
-Add to your MCP config:
-
-```json
-{
-  "brain-os": {
-    "command": "npx",
-    "args": ["-y", "brain-os", "serve"]
-  }
-}
-```
+- `npx brain-os init --minimal`: install only `AGENTS.md` + `CLAUDE.md` and skip the other client pointers (clean-repo mode)
+- `npx brain-os init --no-commands`: skip the slash commands (MCP server only)
+- `npx brain-os init --no-agent-instructions`: skip all agent-instructions pointer files
 
 ### Check live operational state
 
@@ -157,6 +173,7 @@ If `BRAIN_EMBEDDINGS` is unset, the OpenAI provider is missing, or local mode is
 | `focus_get` | Get prioritized recommendations on what to work on |
 | `project_evidence_scan` | Read-only scan of a repo's native operating state (STATE.md, FLAGS, HANDOFF, ROADMAP/PLAN/TODO, git activity, dirty files) for human gates, next moves, and do-not-touch — grounds focus in repo reality. |
 | `operational_state_check` | Ephemeral read-only comparison of allowlisted package/Git facts with optional claimed and desired state; reports evidence-backed drift/conflict without applying changes. |
+| `brain_setup` | Set up Brain OS in the open project from chat. Previews the folder and exact file plan, then writes only after the user confirms (single-use preview token). Never overwrites existing instruction files. Local stdio server only. |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |
@@ -177,7 +194,7 @@ If `BRAIN_EMBEDDINGS` is unset, the OpenAI provider is missing, or local mode is
 
 It also installs:
 
-- **`BRAIN_OS_PROTOCOL.md`** at `.claude/brain-os/PROTOCOL.md` (project) and `~/.claude/brain-os/PROTOCOL.md` (user). The protocol governs tool routing: when an agent runs a Brain OS slash command, it reads the protocol first, then calls `entity_read`/`plan_read`/`focus_get`/etc. as primary. Pulse files become fallback only.
+- **`BRAIN_OS_PROTOCOL.md`** at `.claude/brain-os/PROTOCOL.md` (project) and `~/.claude/brain-os/PROTOCOL.md` (user; written by `npx brain-os init`, or by `brain_setup` only with `include_user_protocol=true`). The protocol governs tool routing: when an agent runs a Brain OS slash command, it reads the protocol first, then calls `entity_read`/`plan_read`/`focus_get`/etc. as primary. Pulse files become fallback only.
 - **`brain-os-mode` subagent** at `.claude/agents/brain-os-mode.md`. When the main agent delegates Brain OS work to a subagent (e.g. Claude Code's Task tool), it picks up under the same protocol — no risk of subagents falling back to generic file search.
 - **Optional routing-guard hook** at `templates/hooks/brain-os-routing-guard.py`. Opt-in PreToolUse hook that warns if pulse files are read while a `.brain/` workspace exists. Install instructions are printed by `brain-os init`.
 
