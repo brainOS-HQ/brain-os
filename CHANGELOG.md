@@ -2,6 +2,28 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.11.0] — 2026-10-31
+
+> Terminal-free project setup after connecting the server. One-click install (editor install buttons, registry listing) is separate, later work.
+
+### Added
+
+- **`brain_setup`**: an MCP tool that sets up Brain OS in the open project from chat. Ask the agent "Set up Brain OS in this project". It shows the folder and the exact files it would create, refresh, or keep, and writes only after you confirm. The store works right away, with no server restart. It is registered only by the local stdio server.
+- **Relocated instructions for projects with their own `AGENTS.md`.** Brain OS rules are written to `.claude/brain-os/AGENTS.md`, generated pointer files link there, and setup lists any of your instruction files that need a one-line Brain OS pointer. This also applies to `npx brain-os init`.
+- The "No Brain OS store found" error now mentions `brain_setup`, so agents can offer setup on their own.
+
+### Security
+
+- `brain_setup` writes only with a single-use preview token issued by the server. The token expires after 15 minutes and is bound to the folder, the options, and the file plan. Any change, or a server restart, forces a new preview and writes nothing.
+- Every planned write is checked against real paths: a symlinked project folder or `.claude/` directory cannot redirect writes outside the project. The home folder, the filesystem root, and folders outside the open workspace are refused.
+- `brain_setup` writes nothing outside the project unless `include_user_protocol=true`.
+- Raised override floors to fix the advisories reported against the MCP SDK's dependency tree: `zod` 4.6.6+ and `body-parser` 2.4.0+ (high); `@hono/node-server` 2.1.3+, `fast-uri` 3.1.9+, `ip-address` 10.7.4+, and `qs` 6.16.1+ (moderate). `npm audit`: 0 vulnerabilities.
+
+### Tests
+
+- 13 new `brain_setup` regressions, 76 in total. They cover the preview and token flow (forged, reused, stale, and changed-plan tokens), symlink escapes, refused targets, relocated instructions, and preserved user files.
+- Verified with real agents: Claude Code, and Cursor (Grok 4.6) in a project with its own `AGENTS.md` / `CLAUDE.md`. VS Code Copilot is untested.
+
 ## [0.10.0] — 2026-10-01
 
 > Verified Operational State (read-only) plus public-action risk hardening. No private reconciliation, Vault, governor, cloud implementation, or automatic state mutation is included.
