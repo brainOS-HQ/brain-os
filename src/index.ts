@@ -5,7 +5,7 @@ import { registerTools } from "./server.js";
 import { registerMcpServer, initBrainDir, listFileRoots, findExistingBrainDir, setBrainDir } from "./utils/file-store.js";
 import { setupBrain } from "./tools/brain-setup.js";
 
-const CURRENT_VERSION = "0.10.0";
+const CURRENT_VERSION = "0.10.1";
 
 const server = new McpServer({
   name: "brain-os",
