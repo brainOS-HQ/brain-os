@@ -1,7 +1,8 @@
 {
   "name": "brain-os",
   "version": "0.11.0",
-  "description": "Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves. The persistent memory layer that stops agent amnesia.",
+  "mcpName": "io.github.brainOS-HQ/brain-os",
+  "description": "One memory for every AI tool: your AI picks up where you left off, with the decisions, plans and next steps already there. Operational memory for AI agents over MCP.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
