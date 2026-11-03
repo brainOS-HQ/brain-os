@@ -17,11 +17,14 @@ npm start           # node dist/index.js (runs the MCP server)
 
 ## Publish flow
 
-1. Bump `package.json` + `src/index.ts` to the new version
+1. Bump `package.json` + `src/index.ts` + both `version` fields in `server.json` to the new version (all four must match)
 2. Update `CHANGELOG.md`
 3. `npm run build`
 4. `npm publish`
-5. Verify with `npm view brain-os version`
+5. Verify with `npm view brain-os version mcpName` (mcpName must print `io.github.brainOS-HQ/brain-os`)
+6. Official MCP Registry, every release (foreground terminal, needs a browser sign-in as a brainOS-HQ member):
+   `mcp-publisher login github && mcp-publisher publish` (install once: `brew install mcp-publisher`).
+   Verify: `curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.brainOS-HQ/brain-os"` shows the new version.
 
 ## Project memory
 
