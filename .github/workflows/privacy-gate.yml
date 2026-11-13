@@ -10,6 +10,10 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
 jobs:
   privacy-scan:
     runs-on: ubuntu-latest

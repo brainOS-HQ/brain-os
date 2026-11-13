@@ -1584,3 +1584,15 @@ test("brain_setup: an AGENTS.md written by Brain OS stays canonical", async () =
   assert.deepEqual(p.plan.needsIntegration, []);
   rmSync(proj, { recursive: true, force: true });
 });
+
+test("SEC-05 workflows: every workflow limits the token to read-only repository access", async () => {
+  const { readdirSync } = await import("node:fs");
+  const dir = new URL("../.github/workflows/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f));
+  assert.ok(files.length >= 3, "expected the test, audit and privacy-gate workflows");
+  for (const file of files) {
+    const text = readFileSync(new URL(file, dir), "utf8");
+    assert.match(text, /^permissions:\n  contents: read\n/m, `${file} must declare top-level permissions: contents: read`);
+    assert.doesNotMatch(text, /^\s+[a-z-]+: write\s*$/m, `${file} must not grant a write scope`);
+  }
+});
