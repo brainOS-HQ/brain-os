@@ -933,8 +933,9 @@ test("SEC-34 project_evidence_scan / operational_state_check: programs named in 
   g("config", "filter.x.process", hook);
   g("config", "log.showSignature", "true");
   g("config", "gpg.program", hook);
-  // Change the tracked file's content and timestamp so status has to re-check it.
-  writeFileSync(join(repo, "a.txt"), "one\ntwo\n");
+  // Same size, new content and timestamp: Git can only tell by re-hashing the
+  // file, which is the step that runs a content filter.
+  writeFileSync(join(repo, "a.txt"), "two\n");
   const later = new Date(Date.now() + 5000);
   utimesSync(join(repo, "a.txt"), later, later);
 
@@ -944,6 +945,47 @@ test("SEC-34 project_evidence_scan / operational_state_check: programs named in 
   assert.equal(exists(marker), false, "a program named in the scanned folder's Git config was executed");
   assert.ok(r.dirty_files.some((f) => f.includes("a.txt")), "dirty-file evidence still works with filters blanked");
   assert.ok(r.recent_git_activity.length >= 1, "commit evidence still works");
+
+  rmSync(repo, { recursive: true, force: true });
+});
+
+test("SEC-34 project_evidence_scan: a content filter defined in the worktree config (config.worktree) never runs", { skip: process.platform === "win32" }, async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, chmodSync, existsSync: exists, utimesSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-wtconfig-"));
+  const marker = join(repo, "RAN");
+  const hook = join(repo, "hook.sh");
+  writeFileSync(hook, `#!/bin/sh\ntouch "${marker}"\ncat\n`);
+  chmodSync(hook, 0o755);
+  writeFileSync(join(repo, ".gitattributes"), "*.txt filter=wt\n");
+  writeFileSync(join(repo, "a.txt"), "one\n");
+
+  const gitEnv = sanitizedGitEnv();
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
+    });
+  g("init", "-q");
+  g("add", ".gitattributes", "a.txt");
+  g("commit", "-q", "-m", "seed");
+  // The filter lives only in .git/config.worktree, which `git config --local` does not list.
+  g("config", "extensions.worktreeConfig", "true");
+  g("config", "--worktree", "filter.wt.clean", hook);
+  g("config", "--worktree", "filter.wt.process", hook);
+  const localKeys = execFileSync("git", ["-C", repo, "config", "--local", "--name-only", "--list"], { encoding: "utf8", env: gitEnv });
+  assert.equal(/filter\.wt\./.test(localKeys), false, "fixture check: the filter must not be in the local config");
+
+  // Same size, new content and timestamp: Git can only tell by re-hashing the
+  // file, which is the step that runs a content filter.
+  writeFileSync(join(repo, "a.txt"), "two\n");
+  const later = new Date(Date.now() + 5000);
+  utimesSync(join(repo, "a.txt"), later, later);
+
+  const r = scanProjectEvidence({ root_path: repo });
+
+  assert.equal(exists(marker), false, "a filter program from the worktree config was executed");
+  assert.ok(r.dirty_files.some((f) => f.includes("a.txt")), "dirty-file evidence still works");
 
   rmSync(repo, { recursive: true, force: true });
 });

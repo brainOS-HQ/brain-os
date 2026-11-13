@@ -118,19 +118,42 @@ function git(root: string, args: string[]): string[] | null {
 
 // `git status` re-hashes changed files, and that runs any content filter
 // (filter.<name>.clean / .process) the folder's own config defines for them.
-// List the filter drivers defined in the repository-local config (reading
-// config runs nothing) and blank each one for this call. Returns null when a
-// driver name cannot be overridden safely on the command line, in which case
-// the caller must not run `git status` at all.
+// List the filter drivers Git would actually use (reading config runs nothing)
+// and blank each one that comes from the folder itself: .git/config ("local")
+// and, when extensions.worktreeConfig is on, .git/config.worktree ("worktree"),
+// which `git config --local` does not list. Drivers from the user's own global
+// or system config are left alone. Returns null when the list cannot be read,
+// or a driver name cannot be overridden safely on the command line; the caller
+// must then not run `git status` at all.
 function repoFilterOverrides(root: string): string[] | null {
-  const keys = git(root, [
-    "config", "--local", "--includes", "--name-only", "--get-regexp",
-    "^filter\\..*\\.(clean|smudge|process)$",
-  ]);
-  if (keys === null) return []; // no local filter config (git exits 1 on no match)
+  let out: string;
+  try {
+    out = execFileSync(
+      "git",
+      [
+        ...GIT_SAFE_CONFIG, "-C", root,
+        "config", "--show-scope", "--includes", "--name-only", "--get-regexp",
+        "^filter\\..*\\.(clean|smudge|process)$",
+      ],
+      { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], env: sanitizedGitEnv() },
+    );
+  } catch (error) {
+    // Exit status 1 means "no such key": no filter is defined anywhere.
+    if ((error as { status?: number }).status === 1) return [];
+    return null;
+  }
   const overrides: string[] = [];
-  for (const key of keys) {
+  const seen = new Set<string>();
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    const tab = line.indexOf("\t");
+    if (tab < 0) return null;
+    const scope = line.slice(0, tab);
+    const key = line.slice(tab + 1);
+    if (scope !== "local" && scope !== "worktree") continue;
     if (/[=\s]/.test(key)) return null;
+    if (seen.has(key)) continue;
+    seen.add(key);
     overrides.push("-c", `${key}=`);
   }
   return overrides;
@@ -234,7 +257,7 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
     const filterOverrides = repoFilterOverrides(root);
     if (filterOverrides === null) {
       result.warnings.push(
-        "skipped dirty-file evidence: this folder's Git config defines a content filter that cannot be switched off safely.",
+        "skipped dirty-file evidence: this folder's Git content filters could not be listed or switched off safely.",
       );
     } else {
       const status = git(root, [
