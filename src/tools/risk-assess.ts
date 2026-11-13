@@ -51,6 +51,10 @@ interface DestructiveRule {
 const DESTRUCTIVE_TARGETS =
   "(?:\\b(?:databases?|db|tables?|schemas?|buckets?|namespaces?|volumes?|clusters?|folders?|director(?:y|ies)|dirs?|repos?|repositor(?:y|ies)|branch(?:es)?|files?|prod(?:uction)?)\\b|\\.brain\\b)";
 
+// Words that end a verb's direct object ("remove a line FROM the file").
+const NOT_AN_OBJECT =
+  "(?:from|in|inside|within|of|on|at|to|into|onto|for|with|by|under|off|out|and|or|then|but)\\b";
+
 const DESTRUCTIVE_RULES: DestructiveRule[] = [
   { pattern: /\bgit\s+reset\b.*--hard\b/i, reason: "git reset --hard discards uncommitted changes permanently.", irreversible: true },
   { pattern: /\bforce.?push\b|push.*--force/i, reason: "Force push overwrites remote history and cannot be undone for collaborators.", irreversible: false },
@@ -67,8 +71,11 @@ const DESTRUCTIVE_RULES: DestructiveRule[] = [
   { pattern: /\bdestroy(?:s|ed|ing)?\b/i, reason: "A destroy action tears down resources and what they hold.", irreversible: true },
   { pattern: /\b(?:wip(?:e|es|ed|ing)|eras(?:e|es|ed|ing)|purg(?:e|es|ed|ing))\b/i, reason: "Wiping, erasing or purging removes data without a way back.", irreversible: true },
   {
+    // The target must be the thing deleted: the verb, at most three describing
+    // words, then the target. A preposition ends the match, so "remove X from
+    // this file" (an edit inside a file) is not a deletion of the file.
     pattern: new RegExp(
-      `\\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|drop(?:s|ped|ping)?)\\b[^.\\n]{0,80}${DESTRUCTIVE_TARGETS}`,
+      `\\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|drop(?:s|ped|ping)?)\\s+(?:(?!${NOT_AN_OBJECT})\\S+\\s+){0,3}?${DESTRUCTIVE_TARGETS}`,
       "i",
     ),
     reason: "This deletes or removes files, branches or stored data.",
@@ -79,11 +86,14 @@ const DESTRUCTIVE_RULES: DestructiveRule[] = [
 
 // Sending something off this machine with a command-line transfer tool.
 const TRANSFER_TOOL = /\b(?:curl|wget|scp|sftp|rsync|ncat|nc|ftp)\b/i;
-const TRANSFER_SENDS_DATA =
-  /(?:-X\s*(?:POST|PUT|PATCH)\b|--request\s+(?:POST|PUT|PATCH)\b|\s-d\b|--data\b|\s-F\b|--form\b|\s-T\b|--upload-file\b|--post-(?:data|file)\b)/i;
+const TRANSFER_SENDS_DATA_LONG =
+  /(?:-X\s*(?:POST|PUT|PATCH)\b|--request\s+(?:POST|PUT|PATCH)\b|--data\b|--form\b|--upload-file\b|--post-(?:data|file)\b)/i;
+// Short flags are case-sensitive: curl -d / -F / -T send data, while -D
+// (dump headers), -f (fail on error) and -t (telnet option) do not. Tested
+// against the action as written, never a lowercased copy.
+const TRANSFER_SENDS_DATA_SHORT = /\s-(?:d|F|T)\b/;
 const SENSITIVE_IN_ACTION =
   /\.env\b|\bsecrets?\b|\bapi[_-]?keys?\b|\bpasswords?\b|\bcredentials?\b|\bprivate[_-]?key\b|\baccess[_-]?key\b|\bid_rsa\b|\.pem\b|\btokens?\b/i;
-const FINANCIAL = /\b(?:billing|payments?|charg(?:e|es|ed|ing))\b/i;
 const WRITES_ENV_FILE = /write.*\.env|\.env.*write/i;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -101,7 +111,6 @@ const TRIGGER_PATTERNS: RegExp[] = [
   /\bpost.*api\b/i,
   /\bapi.*call.*post\b/i,
   /\bwebhook\b/i,
-  FINANCIAL,
   TRANSFER_TOOL,
   /\bpublic\s+repo\b/i,
   /\bpublic\s+repository\b/i,
@@ -195,7 +204,7 @@ function detectRelease(
   return reasons;
 }
 
-function detectLocalToExternal(lower: string): string[] {
+function detectLocalToExternal(lower: string, action: string): string[] {
   const reasons: string[] = [];
 
   if (GIT_PUSH_PATTERN.test(lower) && !/force/.test(lower)) {
@@ -207,11 +216,11 @@ function detectLocalToExternal(lower: string): string[] {
   if (/\bwebhook\b/.test(lower) || /\bpost.*api\b/.test(lower) || /\bapi.*call.*post\b/.test(lower)) {
     reasons.push("Writing to an external API or webhook has side effects outside this session.");
   }
-  if (TRANSFER_TOOL.test(lower) && TRANSFER_SENDS_DATA.test(lower)) {
+  if (
+    TRANSFER_TOOL.test(action) &&
+    (TRANSFER_SENDS_DATA_LONG.test(action) || TRANSFER_SENDS_DATA_SHORT.test(action))
+  ) {
     reasons.push("This command sends data from this machine to another host.");
-  }
-  if (FINANCIAL.test(lower)) {
-    reasons.push("Billing and payment actions have real financial effect outside this session.");
   }
 
   return reasons;
@@ -290,7 +299,7 @@ export async function assessRisk(input: RiskAssessInput): Promise<RiskAssessResu
   const p2pReasons = detectPrivateToPublic(input);
   const destructiveReasons = destructive.map((rule) => rule.reason);
   const releaseReasons = detectRelease(lower, input.package_info);
-  const externalReasons = detectLocalToExternal(lower);
+  const externalReasons = detectLocalToExternal(lower, action);
   const securityReasons = detectSecurity(input);
 
   const risk_reasons = [...p2pReasons, ...destructiveReasons, ...releaseReasons, ...externalReasons, ...securityReasons];

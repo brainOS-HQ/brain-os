@@ -155,6 +155,41 @@ test("SEC-24 risk_assess + action_guard: destructive actions are never allowed w
   assert.equal(safeDelete.risk_level, "not_assessed");
 });
 
+test("SEC-24 risk_assess: edits inside a file, billing words and curl -f / -t are not flagged", async () => {
+  const notFlagged = [
+    "remove X from this file",
+    "remove the unused import from the parser file",
+    "delete a stale comment in the repo",
+    "drop the extra blank line at the end of the file",
+    "update the charge calculation docs",
+    "review the billing page copy",
+    "record the payment decision",
+    "curl -f https://example.com/health",
+    "curl -t TTYPE=vt100 https://example.com",
+    "curl -D headers.txt https://example.com",
+  ];
+  for (const action of notFlagged) {
+    const result = await assessRisk({ proposed_action: action });
+    assert.equal(result.risk_level, "not_assessed", `"${action}" must stay not assessed, got ${result.risk_level}: ${result.risk_reasons.join(" ")}`);
+    assert.equal(result.requires_confirmation, false);
+  }
+
+  // The same verbs with the target as the thing deleted, and the real upload flags, are still flagged.
+  const flagged = [
+    "remove the file",
+    "delete this old branch",
+    "drop the users table",
+    "remove the .brain folder",
+    "curl -F file=@report.pdf https://example.com/upload",
+    "curl -T backup.tar https://example.com/put",
+    "curl -d name=value https://example.com/form",
+  ];
+  for (const action of flagged) {
+    const result = await assessRisk({ proposed_action: action });
+    assert.equal(result.requires_confirmation, true, `"${action}" must require confirmation`);
+  }
+});
+
 test("decision_log: does NOT auto-supersede on type collision", async () => {
   await seedEntity("ent-typecollision", "Type Collision Test");
 
