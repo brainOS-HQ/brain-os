@@ -1,6 +1,7 @@
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readdirSync, existsSync, statSync, lstatSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { execFileSync } from "node:child_process";
+import { devNull } from "node:os";
 
 // ──────────────────────────────────────────────────────────────────────────
 // project_evidence_scan — v1
@@ -62,6 +63,7 @@ const MARKERS: Array<{ re: RegExp; bucket: keyof ProjectEvidenceScanResult }> = 
 ];
 
 const MAX_LINES_PER_FILE = 2000;
+const MAX_FILE_BYTES = 1_000_000;
 const MAX_HITS_PER_BUCKET = 25;
 const MAX_LINE_LEN = 240;
 
@@ -75,20 +77,71 @@ function trimLine(line: string): string {
 // the full GIT_* namespace for these local, read-only subprocesses so no
 // inherited hook/runner environment can redirect discovery, refs, indexes, or
 // object storage away from -C <root>.
+//
+// One variable is then set on purpose: GIT_NO_LAZY_FETCH=1. A folder whose
+// config declares a promisor remote (extensions.partialClone, remote.<name>.promisor)
+// makes Git fetch any object it finds missing, and remote.<name>.uploadpack
+// names the program that fetch runs. Git 2.45 and later honour this variable
+// and never start that fetch; older versions ignore it (see
+// gitHonoursNoLazyFetch / folderHasPromisorConfig below).
 export function sanitizedGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = { ...source };
   for (const key of Object.keys(env)) {
     if (key.startsWith("GIT_")) delete env[key];
   }
+  env.GIT_NO_LAZY_FETCH = "1";
   return env;
 }
 
+let cachedGitVersion: string | null | undefined;
+
+function installedGitVersion(): string | null {
+  if (cachedGitVersion === undefined) {
+    try {
+      cachedGitVersion = execFileSync("git", ["--version"], {
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: sanitizedGitEnv(),
+      });
+    } catch {
+      cachedGitVersion = null;
+    }
+  }
+  return cachedGitVersion;
+}
+
+// GIT_NO_LAZY_FETCH exists since Git 2.45. A version that cannot be read is
+// treated as older.
+export function gitHonoursNoLazyFetch(versionText: string | null = installedGitVersion()): boolean {
+  const match = /git version (\d+)\.(\d+)/.exec(versionText ?? "");
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 2 || (major === 2 && minor >= 45);
+}
+
+// The scanned folder's own .git/config is untrusted input: root_path comes from
+// the caller, and a folder that was unpacked or shared (not cloned) can carry a
+// config that names programs for Git to run. These command-line overrides win
+// over repository config and switch off every such setting the fixed commands
+// below (log, status, rev-parse) can reach: the fsmonitor program, hooks, and
+// the signature-verification program used by `log` when log.showSignature is on.
+// Content filters are handled separately by repoFilterOverrides(), because they
+// can only be switched off by name.
+export const GIT_SAFE_CONFIG: readonly string[] = [
+  "-c", "core.fsmonitor=false",
+  "-c", `core.hooksPath=${devNull}`,
+  "-c", "log.showSignature=false",
+];
+
 // Run a read-only git command scoped to the repo. Returns trimmed non-empty
 // lines, or null if git is unavailable / the path is not a repo.
+// --no-optional-locks keeps `status` from rewriting the index as a side effect.
 function git(root: string, args: string[]): string[] | null {
   const env = sanitizedGitEnv();
   try {
-    const out = execFileSync("git", ["-C", root, ...args], {
+    const out = execFileSync("git", [...GIT_SAFE_CONFIG, "--no-optional-locks", "-C", root, ...args], {
       encoding: "utf8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
@@ -100,7 +153,103 @@ function git(root: string, args: string[]): string[] | null {
   }
 }
 
-export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvidenceScanResult {
+interface ScopedConfigName {
+  scope: string;
+  key: string;
+}
+
+// List config key names matching a pattern, each with the scope it comes from.
+// Reading config runs nothing. Output is NUL-separated (-z): scope, key, scope,
+// key, ... so a name containing a newline or tab cannot be mistaken for a
+// record boundary. Returns [] when no key matches, and null when the list
+// cannot be read or does not parse; callers must treat null as "unknown".
+function listConfigNames(root: string, pattern: string): ScopedConfigName[] | null {
+  let out: string;
+  try {
+    out = execFileSync(
+      "git",
+      [
+        ...GIT_SAFE_CONFIG, "--no-optional-locks", "-C", root,
+        "config", "--show-scope", "--includes", "--name-only", "-z", "--get-regexp", pattern,
+      ],
+      { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], env: sanitizedGitEnv() },
+    );
+  } catch (error) {
+    // Exit status 1 means "no such key" in any scope.
+    return (error as { status?: number }).status === 1 ? [] : null;
+  }
+  const fields = out.split("\0");
+  if (fields[fields.length - 1] === "") fields.pop();
+  if (fields.length % 2 !== 0) return null;
+  const names: ScopedConfigName[] = [];
+  for (let i = 0; i < fields.length; i += 2) {
+    names.push({ scope: fields[i], key: fields[i + 1] });
+  }
+  return names;
+}
+
+// The folder's own config files: .git/config ("local") and, when
+// extensions.worktreeConfig is on, .git/config.worktree ("worktree"), which
+// `git config --local` does not list. The user's global and system config are
+// their own and are left alone.
+function isFolderScope(scope: string): boolean {
+  return scope === "local" || scope === "worktree";
+}
+
+// True when the folder's own config sets up a promisor remote. Also true when
+// the config cannot be listed: the caller uses this to decide whether running
+// Git is safe, so "unknown" must count as "yes".
+export function folderHasPromisorConfig(root: string): boolean {
+  const names = listConfigNames(root, "^(extensions\\.partialclone|remote\\..*\\.promisor)$");
+  if (names === null) return true;
+  return names.some(({ scope }) => isFolderScope(scope));
+}
+
+// On a Git too old to honour GIT_NO_LAZY_FETCH (before 2.45), a folder that
+// sets up a promisor remote must get no Git commands beyond reading its
+// config. versionText is injectable so tests can take this branch.
+export function lazyFetchCannotBeStopped(
+  root: string,
+  versionText: string | null = installedGitVersion(),
+): boolean {
+  if (gitHonoursNoLazyFetch(versionText)) return false;
+  if (git(root, ["rev-parse", "--git-dir"]) === null) return false; // not a repository
+  return folderHasPromisorConfig(root);
+}
+
+export const LAZY_FETCH_SKIP_WARNING =
+  "skipped all Git evidence: this folder's Git config sets up a partial-clone (promisor) remote, " +
+  "and the installed Git is older than 2.45, which cannot be stopped from contacting that remote.";
+
+// `git status` re-hashes changed files, and that runs any content filter
+// (filter.<name>.clean / .process) the folder's own config defines for them.
+// Blank each filter driver that comes from the folder itself. Returns null
+// when the list cannot be read, or a driver name cannot be overridden safely
+// on the command line; the caller must then not run `git status` at all.
+function repoFilterOverrides(root: string): string[] | null {
+  const names = listConfigNames(root, "^filter\\..*\\.(clean|smudge|process)$");
+  if (names === null) return null;
+  const overrides: string[] = [];
+  const seen = new Set<string>();
+  for (const { scope, key } of names) {
+    if (!isFolderScope(scope)) continue;
+    if (/[=\s]/.test(key)) return null;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    overrides.push("-c", `${key}=`);
+  }
+  return overrides;
+}
+
+export interface ProjectEvidenceScanOptions {
+  // `git --version` text to assume instead of asking the installed Git. For tests.
+  gitVersion?: string | null;
+}
+
+export function scanProjectEvidence(
+  input: ProjectEvidenceScanInput,
+  options: ProjectEvidenceScanOptions = {},
+): ProjectEvidenceScanResult {
   const root = resolve(input.root_path);
   const result: ProjectEvidenceScanResult = {
     root_path: root,
@@ -123,11 +272,19 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   }
 
   // ── 1. Known root-level operating-state files ────────────────────────────
+  // Only regular files that live in root_path itself. A symlink named like a
+  // state file (HANDOFF.md -> anywhere) is skipped, never followed.
   let entries: string[] = [];
+  const skippedLinks: string[] = [];
   try {
     entries = readdirSync(root).filter((name) => {
       try {
-        return statSync(join(root, name)).isFile();
+        const info = lstatSync(join(root, name));
+        if (info.isSymbolicLink()) {
+          if (FILE_PATTERNS.some((re) => re.test(name))) skippedLinks.push(name);
+          return false;
+        }
+        return info.isFile();
       } catch {
         return false;
       }
@@ -135,13 +292,27 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   } catch {
     result.warnings.push(`could not read directory: ${root}`);
   }
+  for (const name of skippedLinks.sort()) {
+    result.warnings.push(`skipped ${name}: it is a symbolic link, and the scan only reads files inside root_path.`);
+  }
 
   const matchedFiles = entries.filter((name) => FILE_PATTERNS.some((re) => re.test(name))).sort();
 
   for (const name of matchedFiles) {
     let content: string;
     try {
-      content = readFileSync(join(root, name), "utf8");
+      // Bounded read: at most MAX_FILE_BYTES, whatever the file's size.
+      const fd = openSync(join(root, name), "r");
+      try {
+        const buffer = Buffer.alloc(MAX_FILE_BYTES + 1);
+        const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+        if (bytes > MAX_FILE_BYTES) {
+          result.warnings.push(`${name} is larger than ${MAX_FILE_BYTES} bytes; scanned the first ${MAX_FILE_BYTES}.`);
+        }
+        content = buffer.subarray(0, Math.min(bytes, MAX_FILE_BYTES)).toString("utf8");
+      } finally {
+        closeSync(fd);
+      }
     } catch {
       result.warnings.push(`could not read file: ${name}`);
       continue;
@@ -167,21 +338,38 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   }
 
   // ── 2. Git activity (read-only) ──────────────────────────────────────────
-  const log = git(root, ["log", "--oneline", "-10"]);
-  if (log === null) {
+  const lazyFetchUnstoppable =
+    options.gitVersion !== undefined
+      ? lazyFetchCannotBeStopped(root, options.gitVersion)
+      : lazyFetchCannotBeStopped(root);
+  const log = lazyFetchUnstoppable ? null : git(root, ["log", "--oneline", "-10"]);
+  if (lazyFetchUnstoppable) {
+    result.warnings.push(LAZY_FETCH_SKIP_WARNING);
+  } else if (log === null) {
     result.warnings.push("not a git repository, or git is unavailable — skipped commit/dirty-file evidence.");
   } else {
     result.recent_git_activity = log;
     result.evidence_used.push("git log (last 10)");
-    const status = git(root, ["status", "--porcelain"]);
-    if (status && status.length) {
-      result.dirty_files = status;
-      result.evidence_used.push("git status (dirty files)");
+    const filterOverrides = repoFilterOverrides(root);
+    if (filterOverrides === null) {
+      result.warnings.push(
+        "skipped dirty-file evidence: this folder's Git content filters could not be listed or switched off safely.",
+      );
+    } else {
+      const status = git(root, [
+        ...filterOverrides,
+        "-c", "status.submoduleSummary=false",
+        "status", "--porcelain", "--ignore-submodules=all",
+      ]);
+      if (status && status.length) {
+        result.dirty_files = status;
+        result.evidence_used.push("git status (dirty files)");
+      }
     }
   }
 
   // ── 3. No-evidence warning ───────────────────────────────────────────────
-  if (matchedFiles.length === 0 && log === null) {
+  if (matchedFiles.length === 0 && log === null && !lazyFetchUnstoppable) {
     result.warnings.push(
       `no operating-state files (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md) and no git history found at ${basename(root)}.`,
     );

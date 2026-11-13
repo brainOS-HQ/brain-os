@@ -2,6 +2,34 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.11.1] — 2026-11-13
+
+> Security hardening for the risk guard and the Git-reading tools. No new features.
+
+### Security
+
+- **`risk_assess` / `action_guard` no longer answer "low" and "allow" for actions they do not recognise.** An action no rule matches now returns `risk_level: "not_assessed"` (with `reversibility: "unknown"` and no forced confirmation), and `action_guard` returns `decision: "not_assessed"`, which states that it is not approval. Before, `rm -f`, `git clean -fdx`, `git checkout -- .`, `git branch -D`, `DELETE FROM`, `drop database`, `kubectl delete` and `terraform destroy` all came back as allowed.
+- The destructive rules are wider:
+  - `rm` followed by anything: flags with no target (`run rm -rf`), a target, or a target after `--`; also `xargs rm`, `find ... -delete`, `unlink`, `shred`, `rmdir` and `dd of=`.
+  - Git: `git clean` (not `-n` / `--dry-run`), `git checkout -- <path>`, `git checkout <ref> -- <path>`, `git checkout .`, `git checkout -f`, `git switch -f` / `--discard-changes`, `git restore` (not `--staged` on its own), `git branch -D`, `git stash drop` / `clear`.
+  - Data stores and infrastructure: `DELETE FROM`, `DROP TABLE` / `DATABASE` / `SCHEMA` / `COLUMN` / `INDEX` / `VIEW`, `TRUNCATE`, `FLUSHALL` / `FLUSHDB`, `kubectl delete`, `helm uninstall`, `docker ... prune`, destroy, wipe / erase / purge.
+  - Plain language: deleting or removing files, branches or stored data (when that is the thing being deleted or emptied, not an edit inside a file), and overwrite.
+  - Sending data with `curl`, `wget`, `scp` and similar tools is flagged. A credential word (key, token, secret, `.pem`, ...) counts only when the command sends data or uses a copy tool (`scp`, `sftp`, `rsync`, `nc`, `ftp`); a plain download whose URL contains such a word is not flagged.
+- `project_evidence_scan` and `operational_state_check` are harder to abuse through the scanned folder's own Git config. A folder that was unpacked or shared (not cloned) could previously make a read-only scan run a program. Now blocked: `core.fsmonitor`, hooks, the signature-verification program, content filters from `.git/config` or `.git/config.worktree`, and fetching from a partial-clone (promisor) remote (`GIT_NO_LAZY_FETCH=1`; on Git older than 2.45 such a folder gets no Git commands from either tool, and the skip is listed in `warnings`). **This reduces the risk; it does not close it.** The protection is a list of blocked settings, and two more ways through were found after the first version of this fix. Do not point these tools at a folder you do not trust; the descriptions of `project_evidence_scan`, `operational_state_check` and `decision_review`, and `SECURITY.md`, now say that `root_path` must be a trusted folder.
+- `project_evidence_scan` no longer follows symbolic links and reads at most 1 MB per state file. Skipped links are listed in `warnings`.
+- CI workflows run with a read-only token (`permissions: contents: read`).
+- Lockfile refreshed and override floors raised for moderate advisories in the MCP SDK's unused HTTP transport: `hono` 4.13.16+ and `@hono/node-server` 2.1.6+. `npm audit`: 0 vulnerabilities.
+- `SECURITY.md` lists 0.11.x as the active line, says where to report BrainOS Cloud issues, and states the two outbound network calls the server makes.
+
+### Changed
+
+- **Callers that gate on `allow` must handle a new answer.** For an action no rule matches, `risk_assess` no longer returns `risk_level: "low"` and `action_guard` no longer returns `decision: "allow"`. They return `risk_level: "not_assessed"` (with `reversibility: "unknown"`, `requires_confirmation: false`) and `decision: "not_assessed"`. That answer is neither approval nor a request to confirm: a caller that proceeded only on `allow` will now stop on these actions unless it handles `not_assessed`.
+- `project_evidence_scan`: `dirty_files` no longer lists dirty submodules (`git status` runs with `--ignore-submodules=all`), and is empty with a warning when the folder's content filters cannot be switched off safely. Git calls use `--no-optional-locks`, so a scan no longer refreshes the scanned folder's index.
+
+### Tests
+
+- 16 new regressions, 92 in total: Git config isolation (fsmonitor, content filters, worktree config, promisor remotes, the older-Git skip in both tools), symlink and size limits in the evidence scan, the guard's "not assessed" answer, the destructive rules and their exceptions (dry runs, unstaging, downloads), workflow permissions, the trusted-folder statement, and `SECURITY.md` staying on the current version.
+
 ## [0.11.0] — 2026-10-31
 
 > Terminal-free project setup after connecting the server. One-click install (editor install buttons, registry listing) is separate, later work.

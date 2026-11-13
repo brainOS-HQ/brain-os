@@ -380,9 +380,9 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "project_evidence_scan",
-    "Read-only scan of a repo's native operating state (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md + recent git activity / dirty files). Returns evidence — human gates, blockers, next moves, do-not-touch, safe parallel work — surfaced as exact lines. Call AFTER context_resolve and BEFORE building a focus answer. Mutates nothing and does no inference: it returns ALL candidate signals; deciding the focus is the agent's job. This is NOT context_resolve — do not use it to pick which project you're in.",
+    "Read-only scan of a repo's native operating state (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md + recent git activity / dirty files). Returns evidence — human gates, blockers, next moves, do-not-touch, safe parallel work — surfaced as exact lines. Call AFTER context_resolve and BEFORE building a focus answer. Mutates nothing and does no inference: it returns ALL candidate signals; deciding the focus is the agent's job. This is NOT context_resolve — do not use it to pick which project you're in. TRUST: root_path must be a folder you trust (your own project, or a repository you cloned). Git runs inside it and reads that folder's own Git config; known ways for such a config to run a program are blocked, but that list is not guaranteed complete. Do not scan a folder that was unpacked from an archive or shared by someone you do not trust.",
     {
-      root_path: z.string().describe("Absolute path to the repo/project root to scan."),
+      root_path: z.string().describe("Absolute path to the repo/project root to scan. Must be a folder you trust: Git runs there and reads that folder's own Git config."),
       entity_id: z.string().optional().describe("Optional Brain OS entity this repo maps to (echoed back; does not affect the scan)."),
     },
     { readOnlyHint: true },
@@ -394,9 +394,9 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "operational_state_check",
-    "Read-only Verified Operational State checker. Independently derives an allowlisted set of live repository facts (package name/version and Git branch/HEAD), compares them with optional claimed and desired state, and reports verified/drift/stale/conflict/unavailable results with evidence pointers. Decision context remains visibly separate human judgment. Ephemeral: writes no Brain OS, repository, issue, memory, decision, plan, evidence, version, or audit record.",
+    "Read-only Verified Operational State checker. Independently derives an allowlisted set of live repository facts (package name/version and Git branch/HEAD), compares them with optional claimed and desired state, and reports verified/drift/stale/conflict/unavailable results with evidence pointers. Decision context remains visibly separate human judgment. Ephemeral: writes no Brain OS, repository, issue, memory, decision, plan, evidence, version, or audit record. TRUST: root_path must be a folder you trust (your own project, or a repository you cloned). Git runs inside it and reads that folder's own Git config; known ways for such a config to run a program are blocked, but that list is not guaranteed complete.",
     {
-      root_path: z.string().describe("Absolute path to the repository root. Only package.json name/version and fixed read-only Git metadata commands are observed."),
+      root_path: z.string().describe("Absolute path to the repository root. Must be a folder you trust: Git runs there and reads that folder's own Git config. Only package.json name/version and fixed read-only Git metadata commands are observed."),
       claims: z.array(z.object({
         key: z.enum(OPERATIONAL_STATE_KEYS),
         value: z.string().max(512),
@@ -423,12 +423,12 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "decision_review",
-    "Call this before making new decisions, at session end, or when the user asks if a decision is still valid or what's overdue. Review-debt inbox: buckets overdue decisions into still_true / changed / archive / needs_evidence with a recommended action for each. READ-ONLY — proposes and cites reasons but mutates nothing; confirm, then apply via decision_refresh / decision_log. Auto-detects duplicate stubs. When root_path is provided, matches each decision's invalidate_if conditions against repo scan output.",
+    "Call this before making new decisions, at session end, or when the user asks if a decision is still valid or what's overdue. Review-debt inbox: buckets overdue decisions into still_true / changed / archive / needs_evidence with a recommended action for each. READ-ONLY — proposes and cites reasons but mutates nothing; confirm, then apply via decision_refresh / decision_log. Auto-detects duplicate stubs. When root_path is provided, matches each decision's invalidate_if conditions against repo scan output. TRUST: root_path, when given, must be a folder you trust (your own project, or a repository you cloned). Git runs inside it and reads that folder's own Git config; known ways for such a config to run a program are blocked, but that list is not guaranteed complete.",
     {
       entity_id: z.string().optional().describe("Scope to one entity. Omit to review all entities' overdue decisions."),
       limit: z.number().optional().describe("Max decisions to surface (default 5)."),
       include_parked: z.boolean().optional().describe("Include decisions on parked/archived entities (default false)."),
-      root_path: z.string().optional().describe("Absolute path to a project repo. When provided, runs project_evidence_scan and matches invalidate_if conditions against git log and state files. Matched decisions are moved to the 'changed' bucket with the triggering evidence cited."),
+      root_path: z.string().optional().describe("Absolute path to a project repo. When provided, runs project_evidence_scan and matches invalidate_if conditions against git log and state files. Matched decisions are moved to the 'changed' bucket with the triggering evidence cited. Must be a folder you trust: Git runs there and reads that folder's own Git config."),
     },
     { readOnlyHint: true },
     async ({ entity_id, limit, include_parked, root_path }) => {
@@ -443,7 +443,7 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "risk_assess",
-    "Assess the risk of a proposed action before executing it. Runs a pre-filter (returns low/skipped immediately for clearly safe actions) then applies signal detection for: private→public boundary crossings, destructive operations, release/publish actions, external communication, and security-sensitive file access. Call this BEFORE any action in the trigger set: publish, push, force-push, git tag, deploy, delete tracked files, external API writes, billing, roadmap/private state movement. Returns risk_level (low/medium/high/critical), boundary_crossed, reversibility, and risk_reasons. Pass the result to action_guard to get a policy decision (allow/ask/block).",
+    "Assess the risk of a proposed action before executing it. Matches the action against a fixed list of risk rules: private→public boundary crossings, destructive operations (deleting files, branches, rows or resources; discarding changes), release/publish actions, external communication, and security-sensitive file access. Call this BEFORE any action in the trigger set: publish, push, force-push, git tag, deploy, delete or overwrite files or data, external API writes, roadmap/private state movement. Returns risk_level (low/medium/high/critical, or not_assessed), boundary_crossed, reversibility, and risk_reasons. risk_level 'not_assessed' means no rule matched: it is NOT a safety verdict, so do not treat it as approval. Pass the result to action_guard to get a policy decision (allow/ask/block/not_assessed).",
     {
       proposed_action: z.string().describe("The action about to be taken — describe it clearly, e.g. 'npm publish brain-os@0.9.0' or 'write ROADMAP.md to public repo'."),
       entity_id: z.string().optional().describe("Brain OS entity this action is associated with."),
@@ -466,12 +466,12 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "action_guard",
-    "Apply the Brain OS policy table to a risk assessment. Takes the output of risk_assess plus the concrete action type and returns a policy decision: allow (proceed), ask (stop and get explicit user confirmation), or block (do not proceed). Pure TypeScript — no LLM call. Policies in order: private_to_public → block; critical risk → block; force-push → ask; npm publish → ask; security boundary → ask; irreversible → ask; high risk → ask; hard-to-reverse external → ask; medium + requires_confirmation → ask; else → allow. Always audit what was decided and why.",
+    "Apply the Brain OS policy table to a risk assessment. Takes the output of risk_assess plus the concrete action type and returns a policy decision: allow (proceed), ask (stop and get explicit user confirmation), block (do not proceed), or not_assessed (no rule covered the action: Brain OS has no opinion, which is not approval; fall back to your own judgment and your host's confirmation rules). Pure TypeScript — no LLM call. Policies in order: private_to_public → block; critical risk → block; force-push → ask; npm publish → ask; security boundary → ask; irreversible → ask; high risk → ask; hard-to-reverse external → ask; medium + requires_confirmation → ask; not assessed → not_assessed; else → allow. Always audit what was decided and why.",
     {
       assessment: z.object({
-        risk_level: z.enum(["low", "medium", "high", "critical"]),
+        risk_level: z.enum(["low", "medium", "high", "critical", "not_assessed"]),
         boundary_crossed: z.enum(["none", "private_to_public", "local_to_external", "destructive", "release", "security"]),
-        reversibility: z.enum(["reversible", "hard_to_reverse", "irreversible"]),
+        reversibility: z.enum(["reversible", "hard_to_reverse", "irreversible", "unknown"]),
         requires_confirmation: z.boolean(),
         risk_reasons: z.array(z.string()),
         pre_filter_skipped: z.boolean(),
