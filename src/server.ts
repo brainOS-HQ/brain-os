@@ -443,7 +443,7 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "risk_assess",
-    "Assess the risk of a proposed action before executing it. Runs a pre-filter (returns low/skipped immediately for clearly safe actions) then applies signal detection for: private→public boundary crossings, destructive operations, release/publish actions, external communication, and security-sensitive file access. Call this BEFORE any action in the trigger set: publish, push, force-push, git tag, deploy, delete tracked files, external API writes, billing, roadmap/private state movement. Returns risk_level (low/medium/high/critical), boundary_crossed, reversibility, and risk_reasons. Pass the result to action_guard to get a policy decision (allow/ask/block).",
+    "Assess the risk of a proposed action before executing it. Matches the action against a fixed list of risk rules: private→public boundary crossings, destructive operations (deleting files, branches, rows or resources; discarding changes), release/publish actions, external communication, and security-sensitive file access. Call this BEFORE any action in the trigger set: publish, push, force-push, git tag, deploy, delete or overwrite files or data, external API writes, billing, roadmap/private state movement. Returns risk_level (low/medium/high/critical, or not_assessed), boundary_crossed, reversibility, and risk_reasons. risk_level 'not_assessed' means no rule matched: it is NOT a safety verdict, so do not treat it as approval. Pass the result to action_guard to get a policy decision (allow/ask/block/not_assessed).",
     {
       proposed_action: z.string().describe("The action about to be taken — describe it clearly, e.g. 'npm publish brain-os@0.9.0' or 'write ROADMAP.md to public repo'."),
       entity_id: z.string().optional().describe("Brain OS entity this action is associated with."),
@@ -466,12 +466,12 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "action_guard",
-    "Apply the Brain OS policy table to a risk assessment. Takes the output of risk_assess plus the concrete action type and returns a policy decision: allow (proceed), ask (stop and get explicit user confirmation), or block (do not proceed). Pure TypeScript — no LLM call. Policies in order: private_to_public → block; critical risk → block; force-push → ask; npm publish → ask; security boundary → ask; irreversible → ask; high risk → ask; hard-to-reverse external → ask; medium + requires_confirmation → ask; else → allow. Always audit what was decided and why.",
+    "Apply the Brain OS policy table to a risk assessment. Takes the output of risk_assess plus the concrete action type and returns a policy decision: allow (proceed), ask (stop and get explicit user confirmation), block (do not proceed), or not_assessed (no rule covered the action: Brain OS has no opinion, which is not approval; fall back to your own judgment and your host's confirmation rules). Pure TypeScript — no LLM call. Policies in order: private_to_public → block; critical risk → block; force-push → ask; npm publish → ask; security boundary → ask; irreversible → ask; high risk → ask; hard-to-reverse external → ask; medium + requires_confirmation → ask; not assessed → not_assessed; else → allow. Always audit what was decided and why.",
     {
       assessment: z.object({
-        risk_level: z.enum(["low", "medium", "high", "critical"]),
+        risk_level: z.enum(["low", "medium", "high", "critical", "not_assessed"]),
         boundary_crossed: z.enum(["none", "private_to_public", "local_to_external", "destructive", "release", "security"]),
-        reversibility: z.enum(["reversible", "hard_to_reverse", "irreversible"]),
+        reversibility: z.enum(["reversible", "hard_to_reverse", "irreversible", "unknown"]),
         requires_confirmation: z.boolean(),
         risk_reasons: z.array(z.string()),
         pre_filter_skipped: z.boolean(),
