@@ -167,6 +167,8 @@ test("SEC-24 risk_assess: edits inside a file, billing words and curl -f / -t ar
     "curl -f https://example.com/health",
     "curl -t TTYPE=vt100 https://example.com",
     "curl -D headers.txt https://example.com",
+    "remove all references to X in this file",
+    "remove all trailing whitespace in the file",
   ];
   for (const action of notFlagged) {
     const result = await assessRisk({ proposed_action: action });
@@ -174,12 +176,16 @@ test("SEC-24 risk_assess: edits inside a file, billing words and curl -f / -t ar
     assert.equal(result.requires_confirmation, false);
   }
 
-  // The same verbs with the target as the thing deleted, and the real upload flags, are still flagged.
+  // The same verbs with the target as the thing deleted or emptied, and the real upload flags, are still flagged.
   const flagged = [
     "remove the file",
     "delete this old branch",
     "drop the users table",
     "remove the .brain folder",
+    "remove everything in the data directory",
+    "delete the contents of the prod database",
+    "delete all rows in the users table",
+    "remove all of the files",
     "curl -F file=@report.pdf https://example.com/upload",
     "curl -T backup.tar https://example.com/put",
     "curl -d name=value https://example.com/form",

@@ -81,6 +81,19 @@ const DESTRUCTIVE_RULES: DestructiveRule[] = [
     reason: "This deletes or removes files, branches or stored data.",
     irreversible: false,
   },
+  {
+    // Emptying a container: "remove everything in the data directory",
+    // "delete the contents of the prod database". Here the preposition is part
+    // of the deletion, so it is required rather than excluded.
+    pattern: new RegExp(
+      `\\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|drop(?:s|ped|ping)?)\\s+(?:(?!${NOT_AN_OBJECT})\\S+\\s+){0,2}?` +
+        `(?:everything|all|contents?|data|rows|records)\\s+(?:in|of|inside|within)\\s+` +
+        `(?:(?!${NOT_AN_OBJECT})\\S+\\s+){0,3}?${DESTRUCTIVE_TARGETS}`,
+      "i",
+    ),
+    reason: "This deletes everything inside a folder, database or other store.",
+    irreversible: false,
+  },
   { pattern: /\boverwrit(?:e|es|ing)\b|\boverwritten\b/i, reason: "Overwriting replaces existing content.", irreversible: false },
 ];
 
