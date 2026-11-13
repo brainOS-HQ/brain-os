@@ -44,6 +44,8 @@ const GIT_PUSH_PATTERN =
 // ──────────────────────────────────────────────────────────────────────────────
 interface DestructiveRule {
   pattern: RegExp;
+  // When set and it matches, the rule does not apply (for example a dry run).
+  unless?: RegExp;
   reason: string;
   irreversible: boolean;
 }
@@ -59,12 +61,42 @@ const DESTRUCTIVE_RULES: DestructiveRule[] = [
   { pattern: /\bgit\s+reset\b.*--hard\b/i, reason: "git reset --hard discards uncommitted changes permanently.", irreversible: true },
   { pattern: /\bforce.?push\b|push.*--force/i, reason: "Force push overwrites remote history and cannot be undone for collaborators.", irreversible: false },
   { pattern: /\bgit\s+rm\b/i, reason: "git rm removes files from version control history.", irreversible: false },
-  { pattern: /\bgit\s+clean\b/i, reason: "git clean deletes untracked files; Git keeps no copy of them.", irreversible: true },
-  { pattern: /\bgit\s+checkout\s+(?:--(?:\s|$)|\.(?:\s|$))|\bgit\s+restore\b/i, reason: "This discards uncommitted changes in the working tree.", irreversible: true },
+  {
+    pattern: /\bgit\s+clean\b/i,
+    // -n / --dry-run only lists what would be deleted (also inside a flag group such as -nd).
+    unless: /\bgit\s+clean\b[^\n|;&]*\s(?:--dry-run\b|-[a-zA-Z]*n[a-zA-Z]*\b)/,
+    reason: "git clean deletes untracked files; Git keeps no copy of them.",
+    irreversible: true,
+  },
+  {
+    // `git checkout -- <path>`, `git checkout <ref> -- <path>`, `git checkout .`
+    pattern: /\bgit\s+checkout\b[^\n|;&]*\s--(?:\s|$)|\bgit\s+checkout\s+\.(?:\s|$)/i,
+    reason: "This discards uncommitted changes in the working tree.",
+    irreversible: true,
+  },
+  { pattern: /\bgit\s+checkout\b[^\n|;&]*\s(?:-f\b|--force\b)/i, reason: "git checkout -f throws away uncommitted changes.", irreversible: true },
+  { pattern: /\bgit\s+switch\b[^\n|;&]*\s(?:-f\b|--force\b|--discard-changes\b)/i, reason: "git switch -f / --discard-changes throws away uncommitted changes.", irreversible: true },
+  {
+    pattern: /\bgit\s+restore\b/i,
+    // --staged alone only unstages; with --worktree it also discards the working copy.
+    unless: /\bgit\s+restore\b(?=[^\n|;&]*\s(?:--staged\b|-S\b))(?![^\n|;&]*\s(?:--worktree\b|-W\b))/,
+    reason: "git restore discards uncommitted changes in the working tree.",
+    irreversible: true,
+  },
   { pattern: /\bgit\s+branch\b[^\n]*\s(?:-D\b|--delete\s+--force\b|-d\s+--force\b|--force\s+(?:-d|--delete)\b)/, reason: "git branch -D deletes a branch even when its commits are not merged anywhere.", irreversible: false },
   { pattern: /\bgit\s+stash\s+(?:drop|clear)\b/i, reason: "Dropping a stash discards the changes saved in it.", irreversible: false },
-  { pattern: /\brm\s+(?:-[a-z-]+\s+)*[^\s-]|\b(?:rmdir|remove-item)\b/i, reason: "rm deletes files permanently, without a confirmation prompt or a trash folder.", irreversible: true },
-  { pattern: /\bdrop\s+(?:table|database|schema)\b/i, reason: "DROP TABLE / DATABASE / SCHEMA is irreversible in most databases without a backup.", irreversible: true },
+  // rm followed by anything: flags with no target ("run rm -rf"), a target, or
+  // a target after "--" ("rm -f -- -file").
+  { pattern: /\brm\s+\S|\b(?:rmdir|remove-item)\b/i, reason: "rm deletes files permanently, without a confirmation prompt or a trash folder.", irreversible: true },
+  { pattern: /\bxargs\b[^\n|;&]*\brm\b/i, reason: "xargs rm deletes every file it is given.", irreversible: true },
+  { pattern: /\bfind\b[^\n|;&]*\s-delete\b/i, reason: "find -delete removes every file it matches.", irreversible: true },
+  { pattern: /\bunlink\b/i, reason: "unlink deletes a file.", irreversible: true },
+  { pattern: /\bshred\b/i, reason: "shred overwrites a file so it cannot be recovered.", irreversible: true },
+  { pattern: /\bdd\b[^\n|;&]*\bof=/i, reason: "dd overwrites its output file or device.", irreversible: true },
+  { pattern: /\bdrop\s+(?:table|database|schema|column|index|view)\b/i, reason: "DROP TABLE / DATABASE / SCHEMA / COLUMN / INDEX / VIEW is irreversible in most databases without a backup.", irreversible: true },
+  { pattern: /\bflush(?:all|db)\b/i, reason: "FLUSHALL / FLUSHDB deletes every key in the data store.", irreversible: true },
+  { pattern: /\bdocker\b[^\n|;&]*\bprune\b/i, reason: "docker prune deletes unused containers, images, networks or volumes.", irreversible: true },
+  { pattern: /\bhelm\s+(?:uninstall|delete)\b/i, reason: "helm uninstall removes a release and its resources from the cluster.", irreversible: true },
   { pattern: /\btruncate\b/i, reason: "TRUNCATE removes all rows and cannot be rolled back in some databases.", irreversible: true },
   { pattern: /\bdelete\s+from\b/i, reason: "DELETE FROM removes rows; without a backup or an open transaction they are gone.", irreversible: true },
   { pattern: /\bkubectl\s+delete\b/i, reason: "kubectl delete removes live cluster resources.", irreversible: true },
@@ -99,6 +131,9 @@ const DESTRUCTIVE_RULES: DestructiveRule[] = [
 
 // Sending something off this machine with a command-line transfer tool.
 const TRANSFER_TOOL = /\b(?:curl|wget|scp|sftp|rsync|ncat|nc|ftp)\b/i;
+// Tools whose whole job is copying files or bytes between machines. curl and
+// wget are not in this list: a plain GET sends nothing.
+const COPY_TOOL = /\b(?:scp|sftp|rsync|ncat|nc|ftp)\b/i;
 const TRANSFER_SENDS_DATA_LONG =
   /(?:-X\s*(?:POST|PUT|PATCH)\b|--request\s+(?:POST|PUT|PATCH)\b|--data\b|--form\b|--upload-file\b|--post-(?:data|file)\b)/i;
 // Short flags are case-sensitive: curl -d / -F / -T send data, while -D
@@ -189,8 +224,13 @@ function detectPrivateToPublic(input: RiskAssessInput): string[] {
   return reasons;
 }
 
+// True when the command, as written, sends data off this machine.
+function sendsData(action: string): boolean {
+  return TRANSFER_TOOL.test(action) && (TRANSFER_SENDS_DATA_LONG.test(action) || TRANSFER_SENDS_DATA_SHORT.test(action));
+}
+
 function matchDestructive(action: string): DestructiveRule[] {
-  return DESTRUCTIVE_RULES.filter(({ pattern }) => pattern.test(action));
+  return DESTRUCTIVE_RULES.filter(({ pattern, unless }) => pattern.test(action) && !unless?.test(action));
 }
 
 function detectRelease(
@@ -229,10 +269,7 @@ function detectLocalToExternal(lower: string, action: string): string[] {
   if (/\bwebhook\b/.test(lower) || /\bpost.*api\b/.test(lower) || /\bapi.*call.*post\b/.test(lower)) {
     reasons.push("Writing to an external API or webhook has side effects outside this session.");
   }
-  if (
-    TRANSFER_TOOL.test(action) &&
-    (TRANSFER_SENDS_DATA_LONG.test(action) || TRANSFER_SENDS_DATA_SHORT.test(action))
-  ) {
+  if (sendsData(action)) {
     reasons.push("This command sends data from this machine to another host.");
   }
 
@@ -258,7 +295,9 @@ function detectSecurity(input: RiskAssessInput): string[] {
   }
 
   const action = input.proposed_action;
-  if (TRANSFER_TOOL.test(action) && SENSITIVE_IN_ACTION.test(action)) {
+  // A credential word matters only when something is being sent: a GET whose
+  // URL happens to contain "token" or ".pem" is a download.
+  if (SENSITIVE_IN_ACTION.test(action) && (sendsData(action) || COPY_TOOL.test(action))) {
     reasons.push("The command transfers data and names a credential or secret (for example an environment file, key or token).");
   }
   if (WRITES_ENV_FILE.test(action)) {
