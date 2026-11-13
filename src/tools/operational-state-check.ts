@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { sanitizedGitEnv } from "./project-evidence-scan.js";
+import { GIT_SAFE_CONFIG, sanitizedGitEnv } from "./project-evidence-scan.js";
 
 export const OPERATIONAL_STATE_KEYS = [
   "package.name",
@@ -151,7 +151,7 @@ function readPackage(root: string): { name: string; version: string } {
 }
 
 function git(root: string, args: string[]): string {
-  const output = execFileSync("git", ["--no-optional-locks", "-C", root, ...args], {
+  const output = execFileSync("git", [...GIT_SAFE_CONFIG, "--no-optional-locks", "-C", root, ...args], {
     encoding: "utf8",
     timeout: 5000,
     stdio: ["ignore", "pipe", "ignore"],

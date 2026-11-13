@@ -850,6 +850,47 @@ test("project_evidence_scan: git isolation strips every inherited GIT_* variable
   );
 });
 
+test("SEC-34 project_evidence_scan / operational_state_check: programs named in the scanned folder's Git config never run", { skip: process.platform === "win32" }, async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, chmodSync, existsSync: exists, utimesSync } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-hostile-"));
+  const marker = join(repo, "RAN");
+  const hook = join(repo, "hook.sh");
+  writeFileSync(hook, `#!/bin/sh\ntouch "${marker}"\ncat\n`);
+  chmodSync(hook, 0o755);
+  writeFileSync(join(repo, ".gitattributes"), "*.txt filter=x\n");
+  writeFileSync(join(repo, "a.txt"), "one\n");
+
+  const gitEnv = sanitizedGitEnv();
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
+    });
+  g("init", "-q");
+  g("add", ".gitattributes", "a.txt");
+  g("commit", "-q", "-m", "seed");
+  // The hostile part: config a clone would never carry, but an unpacked or shared folder can.
+  g("config", "core.fsmonitor", hook);
+  g("config", "filter.x.clean", hook);
+  g("config", "filter.x.process", hook);
+  g("config", "log.showSignature", "true");
+  g("config", "gpg.program", hook);
+  // Change the tracked file's content and timestamp so status has to re-check it.
+  writeFileSync(join(repo, "a.txt"), "one\ntwo\n");
+  const later = new Date(Date.now() + 5000);
+  utimesSync(join(repo, "a.txt"), later, later);
+
+  const r = scanProjectEvidence({ root_path: repo });
+  checkOperationalState({ root_path: repo });
+
+  assert.equal(exists(marker), false, "a program named in the scanned folder's Git config was executed");
+  assert.ok(r.dirty_files.some((f) => f.includes("a.txt")), "dirty-file evidence still works with filters blanked");
+  assert.ok(r.recent_git_activity.length >= 1, "commit evidence still works");
+
+  rmSync(repo, { recursive: true, force: true });
+});
+
 test("project_evidence_scan: empty dir → warning, empty arrays, no crash", async () => {
   const empty = mkdtempSync(join(tmpdir(), "brain-evscan-empty-"));
   const r = scanProjectEvidence({ root_path: empty });

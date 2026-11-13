@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { execFileSync } from "node:child_process";
+import { devNull } from "node:os";
 
 // ──────────────────────────────────────────────────────────────────────────
 // project_evidence_scan — v1
@@ -83,12 +84,26 @@ export function sanitizedGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS
   return env;
 }
 
+// The scanned folder's own .git/config is untrusted input: root_path comes from
+// the caller, and a folder that was unpacked or shared (not cloned) can carry a
+// config that names programs for Git to run. These command-line overrides win
+// over repository config and switch off every such setting the fixed commands
+// below (log, status, rev-parse) can reach: the fsmonitor program, hooks, and
+// the signature-verification program used by `log` when log.showSignature is on.
+// Content filters are handled separately by repoFilterOverrides(), because they
+// can only be switched off by name.
+export const GIT_SAFE_CONFIG: readonly string[] = [
+  "-c", "core.fsmonitor=false",
+  "-c", `core.hooksPath=${devNull}`,
+  "-c", "log.showSignature=false",
+];
+
 // Run a read-only git command scoped to the repo. Returns trimmed non-empty
 // lines, or null if git is unavailable / the path is not a repo.
 function git(root: string, args: string[]): string[] | null {
   const env = sanitizedGitEnv();
   try {
-    const out = execFileSync("git", ["-C", root, ...args], {
+    const out = execFileSync("git", [...GIT_SAFE_CONFIG, "-C", root, ...args], {
       encoding: "utf8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
@@ -98,6 +113,26 @@ function git(root: string, args: string[]): string[] | null {
   } catch {
     return null;
   }
+}
+
+// `git status` re-hashes changed files, and that runs any content filter
+// (filter.<name>.clean / .process) the folder's own config defines for them.
+// List the filter drivers defined in the repository-local config (reading
+// config runs nothing) and blank each one for this call. Returns null when a
+// driver name cannot be overridden safely on the command line, in which case
+// the caller must not run `git status` at all.
+function repoFilterOverrides(root: string): string[] | null {
+  const keys = git(root, [
+    "config", "--local", "--includes", "--name-only", "--get-regexp",
+    "^filter\\..*\\.(clean|smudge|process)$",
+  ]);
+  if (keys === null) return []; // no local filter config (git exits 1 on no match)
+  const overrides: string[] = [];
+  for (const key of keys) {
+    if (/[=\s]/.test(key)) return null;
+    overrides.push("-c", `${key}=`);
+  }
+  return overrides;
 }
 
 export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvidenceScanResult {
@@ -173,10 +208,21 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   } else {
     result.recent_git_activity = log;
     result.evidence_used.push("git log (last 10)");
-    const status = git(root, ["status", "--porcelain"]);
-    if (status && status.length) {
-      result.dirty_files = status;
-      result.evidence_used.push("git status (dirty files)");
+    const filterOverrides = repoFilterOverrides(root);
+    if (filterOverrides === null) {
+      result.warnings.push(
+        "skipped dirty-file evidence: this folder's Git config defines a content filter that cannot be switched off safely.",
+      );
+    } else {
+      const status = git(root, [
+        ...filterOverrides,
+        "-c", "status.submoduleSummary=false",
+        "status", "--porcelain", "--ignore-submodules=all",
+      ]);
+      if (status && status.length) {
+        result.dirty_files = status;
+        result.evidence_used.push("git status (dirty files)");
+      }
     }
   }
 
