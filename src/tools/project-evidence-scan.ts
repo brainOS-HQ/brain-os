@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readdirSync, existsSync, statSync, lstatSync, openSync, readSync, closeSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import { execFileSync } from "node:child_process";
 import { devNull } from "node:os";
@@ -63,6 +63,7 @@ const MARKERS: Array<{ re: RegExp; bucket: keyof ProjectEvidenceScanResult }> = 
 ];
 
 const MAX_LINES_PER_FILE = 2000;
+const MAX_FILE_BYTES = 1_000_000;
 const MAX_HITS_PER_BUCKET = 25;
 const MAX_LINE_LEN = 240;
 
@@ -158,11 +159,19 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   }
 
   // ── 1. Known root-level operating-state files ────────────────────────────
+  // Only regular files that live in root_path itself. A symlink named like a
+  // state file (HANDOFF.md -> anywhere) is skipped, never followed.
   let entries: string[] = [];
+  const skippedLinks: string[] = [];
   try {
     entries = readdirSync(root).filter((name) => {
       try {
-        return statSync(join(root, name)).isFile();
+        const info = lstatSync(join(root, name));
+        if (info.isSymbolicLink()) {
+          if (FILE_PATTERNS.some((re) => re.test(name))) skippedLinks.push(name);
+          return false;
+        }
+        return info.isFile();
       } catch {
         return false;
       }
@@ -170,13 +179,27 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   } catch {
     result.warnings.push(`could not read directory: ${root}`);
   }
+  for (const name of skippedLinks.sort()) {
+    result.warnings.push(`skipped ${name}: it is a symbolic link, and the scan only reads files inside root_path.`);
+  }
 
   const matchedFiles = entries.filter((name) => FILE_PATTERNS.some((re) => re.test(name))).sort();
 
   for (const name of matchedFiles) {
     let content: string;
     try {
-      content = readFileSync(join(root, name), "utf8");
+      // Bounded read: at most MAX_FILE_BYTES, whatever the file's size.
+      const fd = openSync(join(root, name), "r");
+      try {
+        const buffer = Buffer.alloc(MAX_FILE_BYTES + 1);
+        const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+        if (bytes > MAX_FILE_BYTES) {
+          result.warnings.push(`${name} is larger than ${MAX_FILE_BYTES} bytes; scanned the first ${MAX_FILE_BYTES}.`);
+        }
+        content = buffer.subarray(0, Math.min(bytes, MAX_FILE_BYTES)).toString("utf8");
+      } finally {
+        closeSync(fd);
+      }
     } catch {
       result.warnings.push(`could not read file: ${name}`);
       continue;

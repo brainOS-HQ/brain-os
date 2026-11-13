@@ -891,6 +891,28 @@ test("SEC-34 project_evidence_scan / operational_state_check: programs named in 
   rmSync(repo, { recursive: true, force: true });
 });
 
+test("SEC-33 project_evidence_scan: symlinked state files are skipped and reads are capped", { skip: process.platform === "win32" }, async () => {
+  const { writeFileSync, symlinkSync: link } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-links-"));
+  const outside = mkdtempSync(join(tmpdir(), "brain-evscan-outside-"));
+  writeFileSync(join(outside, "private.md"), "NEXT MOVE: outside secret line\n");
+  link(join(outside, "private.md"), join(repo, "HANDOFF.md"));
+  // 1 MB of filler first, then a marker line that sits beyond the read cap.
+  writeFileSync(join(repo, "TODO.md"), "NEXT MOVE: inside the cap\n" + "x".repeat(1_000_000) + "\nNEXT MOVE: beyond the cap\n");
+
+  const r = scanProjectEvidence({ root_path: repo });
+
+  assert.equal(r.current_state_files.includes("HANDOFF.md"), false, "a symlinked state file must not be read");
+  assert.equal(r.detected_next_moves.some((l) => l.includes("outside secret line")), false, "no line from outside root_path may be returned");
+  assert.ok(r.warnings.some((w) => w.includes("HANDOFF.md") && /symbolic link/.test(w)), "the skipped link is reported");
+  assert.ok(r.detected_next_moves.some((l) => l.includes("inside the cap")), "content inside the cap is scanned");
+  assert.equal(r.detected_next_moves.some((l) => l.includes("beyond the cap")), false, "content beyond the cap is not read");
+  assert.ok(r.warnings.some((w) => w.includes("TODO.md") && /larger than/.test(w)), "the truncated read is reported");
+
+  rmSync(repo, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
+});
+
 test("project_evidence_scan: empty dir → warning, empty arrays, no crash", async () => {
   const empty = mkdtempSync(join(tmpdir(), "brain-evscan-empty-"));
   const r = scanProjectEvidence({ root_path: empty });
