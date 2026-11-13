@@ -1803,9 +1803,9 @@ test("SEC-42 SECURITY.md: names the current release line as active and states th
   assert.match(text, /BrainOS Cloud/, "must say where Cloud issues are reported");
 });
 
-test("SEC-34 trusted folder: both Git-running tools and SECURITY.md say root_path must be a folder you trust", () => {
+test("SEC-34 trusted folder: every tool that runs Git on root_path, and SECURITY.md, say it must be a folder you trust", () => {
   const server = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
-  for (const tool of ["project_evidence_scan", "operational_state_check"]) {
+  for (const tool of ["project_evidence_scan", "operational_state_check", "decision_review"]) {
     const start = server.indexOf(`"${tool}",`);
     assert.ok(start > 0, `${tool} is registered`);
     const registration = server.slice(start, server.indexOf("server.tool(", start));

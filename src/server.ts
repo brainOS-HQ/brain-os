@@ -423,12 +423,12 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "decision_review",
-    "Call this before making new decisions, at session end, or when the user asks if a decision is still valid or what's overdue. Review-debt inbox: buckets overdue decisions into still_true / changed / archive / needs_evidence with a recommended action for each. READ-ONLY — proposes and cites reasons but mutates nothing; confirm, then apply via decision_refresh / decision_log. Auto-detects duplicate stubs. When root_path is provided, matches each decision's invalidate_if conditions against repo scan output.",
+    "Call this before making new decisions, at session end, or when the user asks if a decision is still valid or what's overdue. Review-debt inbox: buckets overdue decisions into still_true / changed / archive / needs_evidence with a recommended action for each. READ-ONLY — proposes and cites reasons but mutates nothing; confirm, then apply via decision_refresh / decision_log. Auto-detects duplicate stubs. When root_path is provided, matches each decision's invalidate_if conditions against repo scan output. TRUST: root_path, when given, must be a folder you trust (your own project, or a repository you cloned). Git runs inside it and reads that folder's own Git config; known ways for such a config to run a program are blocked, but that list is not guaranteed complete.",
     {
       entity_id: z.string().optional().describe("Scope to one entity. Omit to review all entities' overdue decisions."),
       limit: z.number().optional().describe("Max decisions to surface (default 5)."),
       include_parked: z.boolean().optional().describe("Include decisions on parked/archived entities (default false)."),
-      root_path: z.string().optional().describe("Absolute path to a project repo. When provided, runs project_evidence_scan and matches invalidate_if conditions against git log and state files. Matched decisions are moved to the 'changed' bucket with the triggering evidence cited."),
+      root_path: z.string().optional().describe("Absolute path to a project repo. When provided, runs project_evidence_scan and matches invalidate_if conditions against git log and state files. Matched decisions are moved to the 'changed' bucket with the triggering evidence cited. Must be a folder you trust: Git runs there and reads that folder's own Git config."),
     },
     { readOnlyHint: true },
     async ({ entity_id, limit, include_parked, root_path }) => {
