@@ -1085,6 +1085,64 @@ test("SEC-34 project_evidence_scan: a promisor remote's uploadpack program never
   rmSync(markerDir, { recursive: true, force: true });
 });
 
+test("SEC-34 older Git (before 2.45): a folder with a promisor remote gets no Git commands from either tool", { skip: process.platform === "win32" }, async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, chmodSync, existsSync: exists } = await import("node:fs");
+  const OLD_GIT = "git version 2.44.0";
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-oldgit-"));
+  const markerDir = mkdtempSync(join(tmpdir(), "brain-evscan-oldgit-marker-"));
+  const marker = join(markerDir, "RAN");
+  const hook = join(markerDir, "hook.sh");
+  writeFileSync(hook, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`);
+  chmodSync(hook, 0o755);
+
+  const gitEnv = sanitizedGitEnv();
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
+    });
+  g("init", "-q");
+  writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0" }));
+  g("add", "package.json");
+  g("commit", "-q", "-m", "seed");
+
+  // A plain repository on an old Git is still scanned normally.
+  const plain = scanProjectEvidence({ root_path: repo }, { gitVersion: OLD_GIT });
+  assert.ok(plain.recent_git_activity.length >= 1, "an ordinary folder keeps its Git evidence on old Git");
+  const plainState = checkOperationalState({ root_path: repo }, { gitVersion: OLD_GIT });
+  assert.ok(plainState.observations.find((o) => o.key === "repository.head").observed_value, "an ordinary folder keeps its Git facts on old Git");
+
+  // Now the folder sets up a promisor remote whose "upload-pack" is a local program.
+  g("config", "extensions.partialClone", "evil");
+  g("config", "remote.evil.url", repo);
+  g("config", "remote.evil.promisor", "true");
+  g("config", "remote.evil.uploadpack", hook);
+
+  const scan = scanProjectEvidence({ root_path: repo }, { gitVersion: OLD_GIT });
+  assert.deepEqual(scan.recent_git_activity, [], "no git log on old Git");
+  assert.deepEqual(scan.dirty_files, [], "no git status on old Git");
+  assert.ok(scan.warnings.some((w) => /skipped all Git evidence/.test(w)), "the skip is reported");
+
+  const state = checkOperationalState({ root_path: repo }, { gitVersion: OLD_GIT });
+  for (const key of ["repository.branch", "repository.head"]) {
+    const observation = state.observations.find((o) => o.key === key);
+    assert.equal(observation.observed_value, null, `${key} must not be read on old Git`);
+    assert.equal(observation.status, "unavailable");
+  }
+  assert.ok(state.warnings.some((w) => /skipped all Git evidence/.test(w)), "the state check reports the skip too");
+  assert.equal(state.observations.find((o) => o.key === "package.version").observed_value, "1.0.0", "package facts do not need Git");
+
+  // The same folder on a current Git is read, with lazy fetching switched off.
+  const current = scanProjectEvidence({ root_path: repo }, { gitVersion: "git version 2.45.0" });
+  assert.ok(current.recent_git_activity.length >= 1);
+
+  assert.equal(exists(marker), false, "the promisor remote's program must never run");
+  rmSync(repo, { recursive: true, force: true });
+  rmSync(markerDir, { recursive: true, force: true });
+});
+
 test("SEC-33 project_evidence_scan: symlinked state files are skipped and reads are capped", { skip: process.platform === "win32" }, async () => {
   const { writeFileSync, symlinkSync: link } = await import("node:fs");
   const repo = mkdtempSync(join(tmpdir(), "brain-evscan-links-"));

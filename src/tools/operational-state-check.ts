@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { GIT_SAFE_CONFIG, sanitizedGitEnv } from "./project-evidence-scan.js";
+import {
+  GIT_SAFE_CONFIG,
+  LAZY_FETCH_SKIP_WARNING,
+  lazyFetchCannotBeStopped,
+  sanitizedGitEnv,
+} from "./project-evidence-scan.js";
 
 export const OPERATIONAL_STATE_KEYS = [
   "package.name",
@@ -79,6 +84,8 @@ export interface OperationalStateCheckResult {
 
 interface CheckOptions {
   now?: Date;
+  // `git --version` text to assume instead of asking the installed Git. For tests.
+  gitVersion?: string | null;
 }
 
 const MAX_VALUE_LENGTH = 512;
@@ -280,10 +287,22 @@ export function checkOperationalState(
     }],
   ]);
 
+  // Same rule as project_evidence_scan: on a Git that ignores GIT_NO_LAZY_FETCH,
+  // a folder that sets up a promisor remote gets no Git commands.
+  const skipGit =
+    options.gitVersion !== undefined
+      ? lazyFetchCannotBeStopped(root, options.gitVersion)
+      : lazyFetchCannotBeStopped(root);
+  if (skipGit) warnings.push(LAZY_FETCH_SKIP_WARNING);
+
   for (const [key, args, evidence] of [
     ["repository.branch", ["rev-parse", "--abbrev-ref", "HEAD"], "git rev-parse --abbrev-ref HEAD"],
     ["repository.head", ["rev-parse", "HEAD"], "git rev-parse HEAD"],
   ] as const) {
+    if (skipGit) {
+      observed.set(key, { value: null, source: "git", evidence });
+      continue;
+    }
     try {
       observed.set(key, { value: git(root, [...args]), source: "git", evidence });
     } catch {
