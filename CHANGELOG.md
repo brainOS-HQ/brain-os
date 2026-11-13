@@ -2,6 +2,26 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Security
+
+- **`risk_assess` / `action_guard` no longer answer "low" and "allow" for actions they do not recognise.** An action no rule matches now returns `risk_level: "not_assessed"` (with `reversibility: "unknown"` and no forced confirmation), and `action_guard` returns `decision: "not_assessed"`, which states that it is not approval. Before, `rm -f`, `git clean -fdx`, `git checkout -- .`, `git branch -D`, `DELETE FROM`, `drop database`, `kubectl delete` and `terraform destroy` all came back as allowed.
+- The destructive rules are wider: `rm` with any flags, `git clean`, `git checkout --`, `git restore`, `git branch -D`, `git stash drop`, `DELETE FROM`, `DROP DATABASE` / `SCHEMA`, `kubectl delete`, destroy, wipe / erase / purge, deleting or removing files, branches or stored data, and overwrite. Sending data with `curl`, `scp` and similar tools, and naming a credential in such a command, are also flagged.
+- `project_evidence_scan` and `operational_state_check` ignore programs named in the scanned folder's own Git config (`core.fsmonitor`, content filters, hooks, the signature-verification program). A folder that was unpacked or shared with such a config could previously run a program during a read-only scan.
+- `project_evidence_scan` no longer follows symbolic links and reads at most 1 MB per state file. Skipped links are listed in `warnings`.
+- CI workflows run with a read-only token (`permissions: contents: read`).
+- Lockfile refreshed and override floors raised for moderate advisories in the MCP SDK's unused HTTP transport: `hono` 4.13.16+ and `@hono/node-server` 2.1.6+. `npm audit`: 0 vulnerabilities.
+- `SECURITY.md` lists 0.11.x as the active line, says where to report BrainOS Cloud issues, and states the two outbound network calls the server makes.
+
+### Changed
+
+- `risk_assess` can return `risk_level: "not_assessed"` and `reversibility: "unknown"`; `action_guard` can return `decision: "not_assessed"`. Callers that treated every non-`ask`, non-`block` answer as approval should handle the new value.
+
+### Tests
+
+- 7 new regressions, 83 in total: Git config isolation, symlink and size limits in the evidence scan, the guard's "not assessed" answer and destructive rules, workflow permissions, and `SECURITY.md` staying on the current version.
+
 ## [0.11.0] — 2026-10-31
 
 > Terminal-free project setup after connecting the server. One-click install (editor install buttons, registry listing) is separate, later work.
