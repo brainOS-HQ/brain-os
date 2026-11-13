@@ -2,7 +2,9 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.11.1] — 2026-11-13
+
+> Security hardening for the risk guard and the Git-reading tools. No new features.
 
 ### Security
 
