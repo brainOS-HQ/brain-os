@@ -1653,3 +1653,15 @@ test("SEC-05 workflows: every workflow limits the token to read-only repository 
     assert.doesNotMatch(text, /^\s+[a-z-]+: write\s*$/m, `${file} must not grant a write scope`);
   }
 });
+
+test("SEC-42 SECURITY.md: names the current release line as active and states the outbound network calls", () => {
+  const text = readFileSync(new URL("../SECURITY.md", import.meta.url), "utf8");
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const [major, minor] = pkg.version.split(".");
+  const activeRow = new RegExp(`\\|\\s*${major}\\.${minor}\\.x\\s*\\|[^\\n]*Active`);
+  assert.match(text, activeRow, `SECURITY.md must list ${major}.${minor}.x as the active line`);
+  assert.doesNotMatch(text, /^#+\s*Unreleased/m, "no stale 'Unreleased' advisory section");
+  assert.match(text, /registry\.npmjs\.org/, "the start-up version check must be disclosed");
+  assert.match(text, /BRAIN_EMBEDDINGS=openai/, "the opt-in OpenAI embeddings call must be disclosed");
+  assert.match(text, /BrainOS Cloud/, "must say where Cloud issues are reported");
+});

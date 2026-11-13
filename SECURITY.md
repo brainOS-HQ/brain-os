@@ -1,14 +1,14 @@
 # Security Policy
 
-Brain OS is operational state infrastructure for AI agents. State lives locally in `.brain/`. The MCP server uses stdio transport — there is no network listener, no authentication surface, and no remote callers. The threat model is therefore narrower than a typical web service, but supply-chain and local-input concerns still apply.
+Brain OS is operational state infrastructure for AI agents. State lives locally in `.brain/`. The MCP server uses stdio transport — there is no network listener, no authentication surface, and no remote callers. It makes two kinds of outbound call, listed under [Network calls](#network-calls). The threat model is therefore narrower than a typical web service, but supply-chain and local-input concerns still apply.
 
 ## Supported Versions
 
 | Version | Supported |
 | ------- | --------- |
-| 0.10.x  | ✅ Active |
-| 0.9.x   | ⚠️ Security fixes only |
-| < 0.9   | ❌ Please upgrade |
+| 0.11.x  | ✅ Active |
+| 0.10.x  | ⚠️ Security fixes only |
+| < 0.10  | ❌ Please upgrade |
 
 ## Reporting a Vulnerability
 
@@ -25,6 +25,8 @@ Include:
 - Steps to reproduce (or a proof-of-concept if applicable)
 - Affected versions
 - Suggested mitigation if you have one
+
+**BrainOS Cloud.** The hosted service is a separate system and is not built from this repository. Report a vulnerability in BrainOS Cloud by email to `security@brainos-hq.com`, not through this repository's advisories.
 
 We aim to acknowledge reports within **3 business days** and provide a fix or detailed response within **14 days** for HIGH-severity issues.
 
@@ -55,14 +57,6 @@ We follow a coordinated disclosure model:
 
 ## Recent Advisories
 
-### Unreleased — v0.10.0 candidate
-
-The public-action guardian now treats caller-declared public destinations and clear natural-language branch, commit, tag, repository, remote, or GitHub push descriptions as guarded actions. Callers do not need to include the literal `git push` command for the confirmation requirement to fire.
-
-The new Verified Operational State checker is bounded to four allowlisted package and Git facts, resolves `package.json` within the requested root, sanitizes Git subprocesses, and reports only. It does not mutate repository or Brain OS state.
-
-The candidate lockfile resolves `fast-uri@3.1.8`, `hono@4.13.11`, `ip-address@10.7.2`, and `qs@6.16.0`, closing the current advisories while keeping the `0.9.2` dependency contract unchanged.
-
 ### 2026-08-05 — v0.9.2 dependency hardening
 
 `@huggingface/transformers` was removed from Brain OS package metadata and local embeddings were temporarily disabled. Its latest release still pulls unresolved High-severity advisories through `onnxruntime-node`/`adm-zip` and `sharp`/libvips. Brain OS will not install or recommend that dependency until an audited upstream version or replacement is available. OpenAI embeddings remain an explicit optional peer; keyword recall and all non-semantic tools work without an embeddings provider.
@@ -82,8 +76,15 @@ First `npm audit` pass on the published package surfaced 5 vulnerabilities, all 
 
 Brain OS state lives in `.brain/` inside the user's project. It is:
 
-- **Local-only** — never transmitted to a network endpoint by Brain OS itself
+- **Local-only** — Brain OS does not transmit your state to a network endpoint, with one exception that you switch on yourself (see below)
 - **Audit-logged** — every mutation is recorded in `.brain/audit.jsonl`
 - **Plaintext JSON** — do not store secrets, credentials, or PII in entity fields. If you need to record sensitive context, store a reference (e.g., "see 1Password item X"), not the value.
 
-If you discover Brain OS leaking, transmitting, or persisting unexpected data, that is in scope — please report.
+### Network calls
+
+The server makes exactly two kinds of outbound call. Both use HTTPS.
+
+1. **Version check, on every server start.** A request to `https://registry.npmjs.org/brain-os/latest` to compare the installed version with the latest one. It sends no Brain OS state. Like any HTTPS request, it shows the npm registry your IP address. There is currently no setting to turn it off.
+2. **OpenAI embeddings, only if you enable them.** With `BRAIN_EMBEDDINGS=openai` and an `OPENAI_API_KEY` set, the text of entities, decisions, session summaries and `semantic_recall` queries is sent to OpenAI to create embeddings. This is off by default; without it, nothing from `.brain/` leaves your machine.
+
+If you discover Brain OS leaking, transmitting, or persisting unexpected data beyond these two calls, that is in scope — please report.
