@@ -19,7 +19,7 @@ const { refreshDecision: _refreshDecision } = await import("../dist/tools/decisi
 const { updateEntity: _updateEntity } = await import("../dist/tools/entity-update.js");
 const { getFocus: _getFocus } = await import("../dist/tools/focus-get.js");
 const { resolveContext: _resolveContext } = await import("../dist/tools/context-resolve.js");
-const { scanProjectEvidence, sanitizedGitEnv } = await import("../dist/tools/project-evidence-scan.js");
+const { scanProjectEvidence, sanitizedGitEnv, folderHasPromisorConfig, gitHonoursNoLazyFetch } = await import("../dist/tools/project-evidence-scan.js");
 const { checkOperationalState } = await import("../dist/tools/operational-state-check.js");
 const { checkMemory: _checkMemory } = await import("../dist/tools/memory-check.js");
 const { reviewDecisions: _reviewDecisions } = await import("../dist/tools/decision-review.js");
@@ -937,9 +937,11 @@ test("project_evidence_scan: git isolation strips every inherited GIT_* variable
   assert.equal(env.PATH, "/usr/bin:/bin", "non-Git environment is preserved");
   assert.deepEqual(
     Object.keys(env).filter((key) => key.startsWith("GIT_")),
-    [],
-    "no inherited Git routing/config variable may reach the isolated subprocess",
+    ["GIT_NO_LAZY_FETCH"],
+    "no inherited Git routing/config variable may reach the isolated subprocess; only the lazy-fetch switch is set",
   );
+  assert.equal(env.GIT_NO_LAZY_FETCH, "1");
+  assert.equal(sanitizedGitEnv({ GIT_NO_LAZY_FETCH: "0" }).GIT_NO_LAZY_FETCH, "1", "an inherited value cannot switch lazy fetching back on");
 });
 
 test("SEC-34 project_evidence_scan / operational_state_check: programs named in the scanned folder's Git config never run", { skip: process.platform === "win32" }, async () => {
@@ -1023,6 +1025,58 @@ test("SEC-34 project_evidence_scan: a content filter defined in the worktree con
   assert.ok(r.dirty_files.some((f) => f.includes("a.txt")), "dirty-file evidence still works");
 
   rmSync(repo, { recursive: true, force: true });
+});
+
+test("SEC-34 project_evidence_scan: a promisor remote's uploadpack program never runs for a missing object", { skip: process.platform === "win32" }, async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, chmodSync, existsSync: exists } = await import("node:fs");
+  const repo = mkdtempSync(join(tmpdir(), "brain-evscan-promisor-"));
+  const markerDir = mkdtempSync(join(tmpdir(), "brain-evscan-promisor-marker-"));
+  const marker = join(markerDir, "RAN");
+  const hook = join(markerDir, "hook.sh");
+  writeFileSync(hook, `#!/bin/sh\ntouch "${marker}"\nexit 1\n`);
+  chmodSync(hook, 0o755);
+
+  const gitEnv = sanitizedGitEnv();
+  const g = (...args) =>
+    execFileSync("git", ["-C", repo, "-c", "user.email=t@t.t", "-c", "user.name=test", ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv,
+    });
+  g("init", "-q");
+  writeFileSync(join(repo, "a.txt"), "one\n");
+  g("add", "a.txt");
+  g("commit", "-q", "-m", "first");
+  const first = g("rev-parse", "HEAD").trim();
+  writeFileSync(join(repo, "a.txt"), "two\n");
+  g("add", "a.txt");
+  g("commit", "-q", "-m", "second");
+  // Make the HEAD commit a missing object, as in a damaged or partial clone.
+  // (A missing parent is reported as an error; a missing HEAD is fetched.)
+  const head = g("rev-parse", "HEAD").trim();
+  assert.notEqual(head, first);
+  rmSync(join(repo, ".git", "objects", head.slice(0, 2), head.slice(2)));
+  // The hostile part: a promisor remote whose "upload-pack" is a local program.
+  g("config", "extensions.partialClone", "evil");
+  g("config", "remote.evil.url", repo);
+  g("config", "remote.evil.promisor", "true");
+  g("config", "remote.evil.uploadpack", hook);
+
+  assert.equal(sanitizedGitEnv({ PATH: "/usr/bin" }).GIT_NO_LAZY_FETCH, "1", "lazy fetching must be switched off for every git call");
+  assert.equal(folderHasPromisorConfig(repo), true, "the promisor settings must be detected for Git versions that ignore GIT_NO_LAZY_FETCH");
+  assert.equal(gitHonoursNoLazyFetch("git version 2.44.1"), false);
+  assert.equal(gitHonoursNoLazyFetch("git version 2.45.0"), true);
+  assert.equal(gitHonoursNoLazyFetch("git version 2.54.0 (Apple Git-157)"), true);
+  assert.equal(gitHonoursNoLazyFetch("something else"), false, "an unreadable version is treated as old");
+
+  scanProjectEvidence({ root_path: repo });
+  checkOperationalState({ root_path: repo });
+
+  assert.equal(exists(marker), false, "the promisor remote's uploadpack program was executed");
+
+  rmSync(repo, { recursive: true, force: true });
+  rmSync(markerDir, { recursive: true, force: true });
 });
 
 test("SEC-33 project_evidence_scan: symlinked state files are skipped and reads are capped", { skip: process.platform === "win32" }, async () => {

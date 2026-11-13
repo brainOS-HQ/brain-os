@@ -77,12 +77,78 @@ function trimLine(line: string): string {
 // the full GIT_* namespace for these local, read-only subprocesses so no
 // inherited hook/runner environment can redirect discovery, refs, indexes, or
 // object storage away from -C <root>.
+//
+// One variable is then set on purpose: GIT_NO_LAZY_FETCH=1. A folder whose
+// config declares a promisor remote (extensions.partialClone, remote.<name>.promisor)
+// makes Git fetch any object it finds missing, and remote.<name>.uploadpack
+// names the program that fetch runs. Git 2.45 and later honour this variable
+// and never start that fetch; older versions ignore it (see
+// gitHonoursNoLazyFetch / folderHasPromisorConfig below).
 export function sanitizedGitEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = { ...source };
   for (const key of Object.keys(env)) {
     if (key.startsWith("GIT_")) delete env[key];
   }
+  env.GIT_NO_LAZY_FETCH = "1";
   return env;
+}
+
+let cachedGitVersion: string | null | undefined;
+
+function installedGitVersion(): string | null {
+  if (cachedGitVersion === undefined) {
+    try {
+      cachedGitVersion = execFileSync("git", ["--version"], {
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: sanitizedGitEnv(),
+      });
+    } catch {
+      cachedGitVersion = null;
+    }
+  }
+  return cachedGitVersion;
+}
+
+// GIT_NO_LAZY_FETCH exists since Git 2.45. A version that cannot be read is
+// treated as older.
+export function gitHonoursNoLazyFetch(versionText: string | null = installedGitVersion()): boolean {
+  const match = /git version (\d+)\.(\d+)/.exec(versionText ?? "");
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 2 || (major === 2 && minor >= 45);
+}
+
+// True when the folder's own config (.git/config or .git/config.worktree)
+// sets up a promisor remote. Also true when the config cannot be listed: the
+// caller uses this to decide whether running Git is safe, so "unknown" must
+// count as "yes".
+export function folderHasPromisorConfig(root: string): boolean {
+  let out: string;
+  try {
+    out = execFileSync(
+      "git",
+      [
+        ...GIT_SAFE_CONFIG, "-C", root,
+        "config", "--show-scope", "--includes", "--name-only", "--get-regexp",
+        "^(extensions\\.partialclone|remote\\..*\\.promisor)$",
+      ],
+      { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], env: sanitizedGitEnv() },
+    );
+  } catch (error) {
+    // Exit status 1 means "no such key" in any scope.
+    return (error as { status?: number }).status !== 1;
+  }
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    const tab = line.indexOf("\t");
+    if (tab < 0) return true;
+    const scope = line.slice(0, tab);
+    if (scope === "local" || scope === "worktree") return true;
+  }
+  return false;
 }
 
 // The scanned folder's own .git/config is untrusted input: root_path comes from
@@ -248,8 +314,19 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   }
 
   // ── 2. Git activity (read-only) ──────────────────────────────────────────
-  const log = git(root, ["log", "--oneline", "-10"]);
-  if (log === null) {
+  // On a Git too old to honour GIT_NO_LAZY_FETCH, a folder that sets up a
+  // promisor remote gets no Git commands at all (beyond reading its config).
+  const lazyFetchUnstoppable =
+    !gitHonoursNoLazyFetch() &&
+    git(root, ["rev-parse", "--git-dir"]) !== null &&
+    folderHasPromisorConfig(root);
+  const log = lazyFetchUnstoppable ? null : git(root, ["log", "--oneline", "-10"]);
+  if (lazyFetchUnstoppable) {
+    result.warnings.push(
+      "skipped all Git evidence: this folder's Git config sets up a partial-clone (promisor) remote, " +
+        "and the installed Git is older than 2.45, which cannot be stopped from contacting that remote.",
+    );
+  } else if (log === null) {
     result.warnings.push("not a git repository, or git is unavailable — skipped commit/dirty-file evidence.");
   } else {
     result.recent_git_activity = log;
@@ -273,7 +350,7 @@ export function scanProjectEvidence(input: ProjectEvidenceScanInput): ProjectEvi
   }
 
   // ── 3. No-evidence warning ───────────────────────────────────────────────
-  if (matchedFiles.length === 0 && log === null) {
+  if (matchedFiles.length === 0 && log === null && !lazyFetchUnstoppable) {
     result.warnings.push(
       `no operating-state files (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md) and no git history found at ${basename(root)}.`,
     );
