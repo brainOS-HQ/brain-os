@@ -380,9 +380,9 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "project_evidence_scan",
-    "Read-only scan of a repo's native operating state (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md + recent git activity / dirty files). Returns evidence — human gates, blockers, next moves, do-not-touch, safe parallel work — surfaced as exact lines. Call AFTER context_resolve and BEFORE building a focus answer. Mutates nothing and does no inference: it returns ALL candidate signals; deciding the focus is the agent's job. This is NOT context_resolve — do not use it to pick which project you're in.",
+    "Read-only scan of a repo's native operating state (STATE.md, FLAGS*, HANDOFF*, ROADMAP.md, PLAN*.md, TODO.md, AGENTS.md + recent git activity / dirty files). Returns evidence — human gates, blockers, next moves, do-not-touch, safe parallel work — surfaced as exact lines. Call AFTER context_resolve and BEFORE building a focus answer. Mutates nothing and does no inference: it returns ALL candidate signals; deciding the focus is the agent's job. This is NOT context_resolve — do not use it to pick which project you're in. TRUST: root_path must be a folder you trust (your own project, or a repository you cloned). Git runs inside it and reads that folder's own Git config; known ways for such a config to run a program are blocked, but that list is not guaranteed complete. Do not scan a folder that was unpacked from an archive or shared by someone you do not trust.",
     {
-      root_path: z.string().describe("Absolute path to the repo/project root to scan."),
+      root_path: z.string().describe("Absolute path to the repo/project root to scan. Must be a folder you trust: Git runs there and reads that folder's own Git config."),
       entity_id: z.string().optional().describe("Optional Brain OS entity this repo maps to (echoed back; does not affect the scan)."),
     },
     { readOnlyHint: true },
@@ -394,9 +394,9 @@ export function registerTools(server: McpServer, adapter?: StorageAdapter, opts?
 
   server.tool(
     "operational_state_check",
-    "Read-only Verified Operational State checker. Independently derives an allowlisted set of live repository facts (package name/version and Git branch/HEAD), compares them with optional claimed and desired state, and reports verified/drift/stale/conflict/unavailable results with evidence pointers. Decision context remains visibly separate human judgment. Ephemeral: writes no Brain OS, repository, issue, memory, decision, plan, evidence, version, or audit record.",
+    "Read-only Verified Operational State checker. Independently derives an allowlisted set of live repository facts (package name/version and Git branch/HEAD), compares them with optional claimed and desired state, and reports verified/drift/stale/conflict/unavailable results with evidence pointers. Decision context remains visibly separate human judgment. Ephemeral: writes no Brain OS, repository, issue, memory, decision, plan, evidence, version, or audit record. TRUST: root_path must be a folder you trust (your own project, or a repository you cloned). Git runs inside it and reads that folder's own Git config; known ways for such a config to run a program are blocked, but that list is not guaranteed complete.",
     {
-      root_path: z.string().describe("Absolute path to the repository root. Only package.json name/version and fixed read-only Git metadata commands are observed."),
+      root_path: z.string().describe("Absolute path to the repository root. Must be a folder you trust: Git runs there and reads that folder's own Git config. Only package.json name/version and fixed read-only Git metadata commands are observed."),
       claims: z.array(z.object({
         key: z.enum(OPERATIONAL_STATE_KEYS),
         value: z.string().max(512),

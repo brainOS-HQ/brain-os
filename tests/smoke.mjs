@@ -1802,3 +1802,17 @@ test("SEC-42 SECURITY.md: names the current release line as active and states th
   assert.match(text, /BRAIN_EMBEDDINGS=openai/, "the opt-in OpenAI embeddings call must be disclosed");
   assert.match(text, /BrainOS Cloud/, "must say where Cloud issues are reported");
 });
+
+test("SEC-34 trusted folder: both Git-running tools and SECURITY.md say root_path must be a folder you trust", () => {
+  const server = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
+  for (const tool of ["project_evidence_scan", "operational_state_check"]) {
+    const start = server.indexOf(`"${tool}",`);
+    assert.ok(start > 0, `${tool} is registered`);
+    const registration = server.slice(start, server.indexOf("server.tool(", start));
+    const mentions = registration.match(/folder you trust/g) ?? [];
+    assert.ok(mentions.length >= 2, `${tool} must state the trusted-folder rule in its description and on root_path`);
+  }
+  const security = readFileSync(new URL("../SECURITY.md", import.meta.url), "utf8");
+  const scope = security.slice(security.indexOf("## Scope"), security.indexOf("## Disclosure"));
+  assert.match(scope, /must be a folder you trust/, "SECURITY.md Scope must state the trusted-folder rule");
+});

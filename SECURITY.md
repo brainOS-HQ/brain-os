@@ -40,6 +40,8 @@ In scope:
 - Tool implementations exposed over MCP (`decision_log`, `entity_update`, `plan_*`, `pattern_*`, etc.)
 - The pulse-file and audit-log writers
 
+**Trusted folders only.** `project_evidence_scan` and `operational_state_check` (and `decision_review` when given a `root_path`) run Git inside the folder you name, and Git reads that folder's own config. The `root_path` must be a folder you trust. Known ways for a folder's Git config to run a program are blocked, and a new one is in scope to report, but the block list is not guaranteed complete.
+
 Out of scope:
 
 - Vulnerabilities only reachable via a malicious local agent that already has filesystem write access to the user's machine (the host is trusted)
