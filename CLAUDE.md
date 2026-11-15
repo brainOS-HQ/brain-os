@@ -22,6 +22,7 @@ npm start           # node dist/index.js (runs the MCP server)
 3. `npm run build`
 4. `npm publish`
 5. Verify with `npm view brain-os version mcpName` (mcpName must print `io.github.brainOS-HQ/brain-os`)
+6. Official MCP Registry: after the release is merged to main, run the "Publish to MCP Registry" workflow by hand from the Actions tab (main only; signs in with GitHub OIDC, no stored token)
 
 ## Project memory
 
