@@ -2,6 +2,16 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.11.2] — 2026-11-17
+
+> Data-safety fixes for the local store. No new features.
+
+### Fixed
+
+- **A damaged store file is no longer wiped by the next write.** Before, a truncated or merge-conflicted `decisions.json`, or a truncated entity file, read as empty, and the next `decision_log` or `entity_update` replaced it, losing everything in it. Now any file that exists but can't be read or parsed (including one that contains only `null`) stops the write with a `brain_store_unreadable` error, and the file keeps its bytes so it can be repaired or restored from `.brain/backups`. A missing file still reads as empty, so new stores work as before.
+- **A store folder that can't be listed is no longer treated as empty.** A `decisions` folder that could be written but not listed (for example after a permissions change) read as having no decisions, and `decision_log` replaced the existing ones. It now stops with the same error. A missing folder still lists as empty.
+- **`decision_log` with `supersedes` now saves the change.** The tool reported the old decision as superseded but saved it unchanged, so it stayed active and kept showing in `decision_check` and `entity_read`. The old decision is now saved as `superseded`, pointing to the new one. Superseding another project's decision is still refused.
+
 ## [0.11.1] — 2026-11-13
 
 > Security hardening for the risk guard and the Git-reading tools. No new features.
