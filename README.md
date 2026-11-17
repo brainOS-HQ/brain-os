@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves.</strong>
+  <strong>One memory across your AI tools. Keep decisions, plans and next steps connected across ChatGPT, Claude, Cursor and other supported AI apps.</strong>
 </p>
 
 # Brain OS
