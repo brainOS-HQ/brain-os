@@ -1925,9 +1925,84 @@ test("SEC-05 workflows: every workflow limits the token to read-only repository 
   assert.ok(files.length >= 3, "expected the test, audit and privacy-gate workflows");
   for (const file of files) {
     const text = readFileSync(new URL(file, dir), "utf8");
-    assert.match(text, /^permissions:\n  contents: read\n/m, `${file} must declare top-level permissions: contents: read`);
-    assert.doesNotMatch(text, /^\s+[a-z-]+: write\s*$/m, `${file} must not grant a write scope`);
+    assert.deepEqual(workflowPermissionProblems(file, text), [], `${file} breaks the workflow permission rules`);
   }
+});
+
+// The one workflow allowed a write scope, and only id-token (GitHub OIDC login).
+const OIDC_WORKFLOW = "publish-mcp-registry.yml";
+
+// Returns the list of rule breaks for one workflow file; empty means it passes.
+function workflowPermissionProblems(file, raw) {
+  // Drop comments first, so "contents: write # note" is still seen as a write scope.
+  const text = raw
+    .split("\n")
+    .map((line) => line.replace(/(^|\s)#.*$/, "").trimEnd())
+    .join("\n");
+  const problems = [];
+  if (!/^permissions:\n  contents: read\n(?!  \S)/m.test(text)) {
+    problems.push("top-level permissions must be exactly contents: read");
+  }
+  if (/permissions:\s*write-all/.test(text)) problems.push("write-all is not allowed");
+  const writeScopes = [...text.matchAll(/^\s+["']?([a-z-]+)["']?:\s*["']?write["']?\s*$/gm)].map((m) => m[1]);
+  if (file !== OIDC_WORKFLOW) {
+    if (writeScopes.length > 0) problems.push(`write scope not allowed: ${writeScopes.join(", ")}`);
+    return problems;
+  }
+  if (writeScopes.length !== 1 || writeScopes[0] !== "id-token") {
+    problems.push(`the only write scope allowed is id-token, found: ${writeScopes.join(", ") || "none"}`);
+  }
+  const on = /^on:\n((?:(?:  .*)?\n)+)/m.exec(text);
+  const triggers = on ? [...on[1].matchAll(/^  (\S+?):/gm)].map((m) => m[1]) : [];
+  if ((text.match(/^["']?on["']?:/gm) || []).length !== 1 || triggers.length !== 1 || triggers[0] !== "workflow_dispatch") {
+    problems.push(`the only trigger allowed is workflow_dispatch, found: ${triggers.join(", ") || "none"}`);
+  }
+  const jobsBlock = /^jobs:\n((?:(?:  .*)?\n)+)/m.exec(text + "\n");
+  const jobs = jobsBlock ? [...jobsBlock[1].matchAll(/^  (\S+?):/gm)] : [];
+  const mainOnly = jobsBlock ? jobsBlock[1].match(/^    if: github\.ref == 'refs\/heads\/main'$/gm) || [] : [];
+  if (jobs.length === 0 || mainOnly.length !== jobs.length) {
+    problems.push("every job must have if: github.ref == 'refs/heads/main'");
+  }
+  for (const m of text.matchAll(/\buses:\s*(\S+)/g)) {
+    if (!/@[0-9a-f]{40}$/.test(m[1])) problems.push(`action not pinned to a commit: ${m[1]}`);
+  }
+  return problems;
+}
+
+test("SEC-05 workflows: the OIDC exception is exact, and comments cannot hide a write scope", () => {
+  const dir = new URL("../.github/workflows/", import.meta.url);
+  const publish = readFileSync(new URL(OIDC_WORKFLOW, dir), "utf8");
+  const audit = readFileSync(new URL("audit.yml", dir), "utf8");
+  const broken = (file, text, pattern) => {
+    const problems = workflowPermissionProblems(file, text);
+    assert.ok(problems.some((p) => pattern.test(p)), `expected ${pattern}, got ${JSON.stringify(problems)}`);
+  };
+  const swap = (text, from, to) => {
+    assert.ok(text.includes(from), `fixture text not found: ${from}`);
+    return text.replace(from, to);
+  };
+
+  assert.deepEqual(workflowPermissionProblems(OIDC_WORKFLOW, publish), []);
+  // The real file carries a comment after id-token: write; it must still be counted.
+  assert.match(publish, /id-token: write #/);
+
+  // A second write scope, with or without a trailing comment.
+  broken(OIDC_WORKFLOW, swap(publish, "      contents: read\n", "      contents: write\n"), /only write scope allowed is id-token/);
+  broken(OIDC_WORKFLOW, swap(publish, "      contents: read\n", "      contents: write # needed\n"), /only write scope allowed is id-token/);
+  // Any trigger besides workflow_dispatch.
+  broken(OIDC_WORKFLOW, swap(publish, "  workflow_dispatch:\n", "  workflow_dispatch:\n  push:\n    branches: [main]\n"), /only trigger allowed is workflow_dispatch/);
+  broken(OIDC_WORKFLOW, swap(publish, "on:\n  workflow_dispatch:\n", "on: [push, workflow_dispatch]\n"), /only trigger allowed is workflow_dispatch/);
+  // The main-only condition removed.
+  broken(OIDC_WORKFLOW, swap(publish, "    if: github.ref == 'refs/heads/main'\n", ""), /every job must have if/);
+  // An action pinned to a tag instead of a commit.
+  broken(OIDC_WORKFLOW, publish.replace(/actions\/checkout@[0-9a-f]{40}/, "actions/checkout@v4"), /not pinned to a commit/);
+  // Top-level permissions wider than contents: read.
+  broken(OIDC_WORKFLOW, swap(publish, "permissions:\n  contents: read\n", "permissions:\n  contents: read\n  packages: read\n"), /top-level permissions/);
+
+  // The exception is tied to the file name: no other workflow may take id-token: write.
+  broken("audit.yml", publish, /write scope not allowed: id-token/);
+  // An ordinary workflow with a write scope hidden behind a comment.
+  broken("audit.yml", swap(audit, "permissions:\n  contents: read\n", "permissions:\n  contents: read\n  issues: write # hidden\n"), /write scope not allowed: issues/);
 });
 
 test("SEC-42 SECURITY.md: names the current release line as active and states the outbound network calls", () => {
