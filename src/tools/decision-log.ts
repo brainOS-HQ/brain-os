@@ -90,13 +90,16 @@ export async function logDecision(input: DecisionInput, ctx: ToolContext): Promi
   const superseded: string[] = [];
   if (input.supersedes && input.supersedes.length > 0) {
     for (const targetId of input.supersedes) {
-      const target = allDecisions.find((d) => d.id === targetId);
+      // Mutate the row in `existing`: that is the list written back below.
+      // Changing the copy in `allDecisions` reported success but never saved.
+      const target = existing.find((d) => d.id === targetId);
       if (!target) {
-        throw new Error(`Cannot supersede ${targetId}: decision not found.`);
-      }
-      if (target.entity_id !== input.entity_id) {
+        const elsewhere = allDecisions.find((d) => d.id === targetId);
+        if (!elsewhere) {
+          throw new Error(`Cannot supersede ${targetId}: decision not found.`);
+        }
         throw new Error(
-          `Cannot supersede ${targetId}: belongs to entity "${target.entity_id}", not "${input.entity_id}". A decision can only supersede decisions of the same entity.`
+          `Cannot supersede ${targetId}: belongs to entity "${elsewhere.entity_id}", not "${input.entity_id}". A decision can only supersede decisions of the same entity.`
         );
       }
       target.status = "superseded";
