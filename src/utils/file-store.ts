@@ -150,13 +150,40 @@ export async function ensureDirs(): Promise<void> {
   }
 }
 
-export async function readJsonFile<T>(path: string): Promise<T | null> {
-  try {
-    const content = await readFile(path, "utf-8");
-    return JSON.parse(content) as T;
-  } catch {
-    return null;
+/**
+ * A store file exists but cannot be read or parsed. Writers must stop: treating
+ * it as empty would replace the file and silently drop everything in it (a
+ * truncated decisions.json, a sync-conflict line in memories.json). The file is
+ * left untouched so it can be repaired or restored from .brain/backups.
+ */
+export class BrainStoreCorruptError extends Error {
+  constructor(public readonly path: string, reason: string) {
+    super(
+      `brain_store_unreadable: ${path} could not be read (${reason}). Nothing was changed. ` +
+      `Repair the file or restore it from .brain/backups, then retry.`,
+    );
+    this.name = "BrainStoreCorruptError";
   }
+}
+
+/** null only when the file does not exist; any other failure throws. */
+export async function readJsonFile<T>(path: string): Promise<T | null> {
+  let content: string;
+  try {
+    content = await readFile(path, "utf-8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new BrainStoreCorruptError(path, (e as NodeJS.ErrnoException).code ?? "read failed");
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(content);
+  } catch {
+    throw new BrainStoreCorruptError(path, "invalid JSON");
+  }
+  // A literal `null` would read as "missing" and be overwritten the same way.
+  if (data === null) throw new BrainStoreCorruptError(path, "file contains null");
+  return data as T;
 }
 
 export async function writeJsonFile(path: string, data: unknown): Promise<void> {
@@ -181,11 +208,16 @@ export async function writeJsonFile(path: string, data: unknown): Promise<void> 
   }
 }
 
+/** [] only when the directory does not exist; any other failure throws. */
 export async function listJsonFiles(dir: string): Promise<string[]> {
+  let files: string[];
   try {
-    const files = await readdir(dir);
-    return files.filter((f) => f.endsWith(".json")).map((f) => join(dir, f));
-  } catch {
-    return [];
+    files = await readdir(dir);
+  } catch (e) {
+    // An unlistable directory is not an empty one: callers merge into what
+    // they list, so [] here would drop every existing row on the next write.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new BrainStoreCorruptError(dir, (e as NodeJS.ErrnoException).code ?? "list failed");
   }
+  return files.filter((f) => f.endsWith(".json")).map((f) => join(dir, f));
 }
