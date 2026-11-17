@@ -7,7 +7,7 @@
 
 import { test, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -67,6 +67,25 @@ test("F1: a file containing literal null is treated as unreadable, not empty", a
   writeFileSync(DECISIONS, "null");
   await assert.rejects(logDecision(input(), ctx), BrainStoreCorruptError);
   assert.equal(readFileSync(DECISIONS, "utf8"), "null");
+});
+
+test("F1: an unlistable decisions directory blocks decision_log instead of reading as empty", { skip: process.getuid?.() === 0 && "root ignores directory permissions" }, async () => {
+  const bytes = JSON.stringify([dec("dec-a", "proj"), dec("dec-b", "proj")]);
+  writeFileSync(DECISIONS, bytes);
+  const dir = join(BRAIN, "decisions");
+  chmodSync(dir, 0o300); // write + search, no listing (the reproduced case)
+  try {
+    await assert.rejects(logDecision(input(), ctx), BrainStoreCorruptError);
+  } finally {
+    chmodSync(dir, 0o755);
+  }
+  assert.equal(readFileSync(DECISIONS, "utf8"), bytes, "existing decisions kept");
+});
+
+test("F1: a missing directory still lists as empty", async () => {
+  rmSync(join(BRAIN, "decisions"), { recursive: true, force: true });
+  const { listJsonFiles } = await import("../dist/utils/file-store.js");
+  assert.deepEqual(await listJsonFiles(join(BRAIN, "decisions")), []);
 });
 
 test("F1: healthy files still read and write normally", async () => {

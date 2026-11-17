@@ -208,11 +208,16 @@ export async function writeJsonFile(path: string, data: unknown): Promise<void> 
   }
 }
 
+/** [] only when the directory does not exist; any other failure throws. */
 export async function listJsonFiles(dir: string): Promise<string[]> {
+  let files: string[];
   try {
-    const files = await readdir(dir);
-    return files.filter((f) => f.endsWith(".json")).map((f) => join(dir, f));
-  } catch {
-    return [];
+    files = await readdir(dir);
+  } catch (e) {
+    // An unlistable directory is not an empty one: callers merge into what
+    // they list, so [] here would drop every existing row on the next write.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new BrainStoreCorruptError(dir, (e as NodeJS.ErrnoException).code ?? "list failed");
   }
+  return files.filter((f) => f.endsWith(".json")).map((f) => join(dir, f));
 }
