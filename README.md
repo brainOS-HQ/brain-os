@@ -277,7 +277,7 @@ If you hit a bug, please open an issue with the tool, input, and output — that
 
 ## Community
 
-- **Discord:** [discord.gg/9VBUGstjY](https://discord.gg/9VBUGstjY) — questions, feedback, what broke for you, what you're shipping with Brain OS
+- **Discord:** [discord.gg/MjAHMNJhcs](https://discord.gg/MjAHMNJhcs) — questions, feedback, what broke for you, what you're shipping with Brain OS
 - **Site:** [brainos-hq.com](https://brainos-hq.com)
 - **Issues:** [github.com/brainOS-HQ/brain-os/issues](https://github.com/brainOS-HQ/brain-os/issues)
 
