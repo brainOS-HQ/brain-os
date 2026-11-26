@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.brainOS-HQ/brain-os",
+  "title": "BrainOS",
+  "description": "One memory across your AI tools.",
+  "repository": {
+    "url": "https://github.com/brainOS-HQ/brain-os",
+    "source": "github"
+  },
+  "websiteUrl": "https://brainos-hq.com/",
+  "version": "0.11.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "brain-os",
+      "version": "0.11.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ]
+    }
+  ]
+}

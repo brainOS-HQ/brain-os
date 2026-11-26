@@ -9,6 +9,10 @@ on:
     # Weekly cron — catches new advisories on unchanged deps
     - cron: '0 14 * * 1'
 
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
 jobs:
   audit:
     name: npm audit

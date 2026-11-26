@@ -1,13 +1,14 @@
 # Security Policy
 
-Brain OS is operational state infrastructure for AI agents. State lives locally in `.brain/`. The MCP server uses stdio transport — there is no network listener, no authentication surface, and no remote callers. The threat model is therefore narrower than a typical web service, but supply-chain and local-input concerns still apply.
+Brain OS is operational state infrastructure for AI agents. State lives locally in `.brain/`. The MCP server uses stdio transport — there is no network listener, no authentication surface, and no remote callers. It makes two kinds of outbound call, listed under [Network calls](#network-calls). The threat model is therefore narrower than a typical web service, but supply-chain and local-input concerns still apply.
 
 ## Supported Versions
 
 | Version | Supported |
 | ------- | --------- |
-| 0.4.x   | ✅ Active |
-| < 0.4   | ❌ Please upgrade |
+| 0.11.x  | ✅ Active |
+| 0.10.x  | ⚠️ Security fixes only |
+| < 0.10  | ❌ Please upgrade |
 
 ## Reporting a Vulnerability
 
@@ -25,6 +26,8 @@ Include:
 - Affected versions
 - Suggested mitigation if you have one
 
+**BrainOS Cloud.** The hosted service is a separate system and is not built from this repository. Report a vulnerability in BrainOS Cloud by email to `security@brainos-hq.com`, not through this repository's advisories.
+
 We aim to acknowledge reports within **3 business days** and provide a fix or detailed response within **14 days** for HIGH-severity issues.
 
 ## Scope
@@ -36,6 +39,8 @@ In scope:
 - The `brain-os` CLI (`bin/brain-os.js`)
 - Tool implementations exposed over MCP (`decision_log`, `entity_update`, `plan_*`, `pattern_*`, etc.)
 - The pulse-file and audit-log writers
+
+**Trusted folders only.** `project_evidence_scan` and `operational_state_check` (and `decision_review` when given a `root_path`) run Git inside the folder you name, and Git reads that folder's own config. The `root_path` must be a folder you trust. Known ways for a folder's Git config to run a program are blocked, and a new one is in scope to report, but the block list is not guaranteed complete.
 
 Out of scope:
 
@@ -54,22 +59,34 @@ We follow a coordinated disclosure model:
 
 ## Recent Advisories
 
+### 2026-08-05 — v0.9.2 dependency hardening
+
+`@huggingface/transformers` was removed from Brain OS package metadata and local embeddings were temporarily disabled. Its latest release still pulls unresolved High-severity advisories through `onnxruntime-node`/`adm-zip` and `sharp`/libvips. Brain OS will not install or recommend that dependency until an audited upstream version or replacement is available. OpenAI embeddings remain an explicit optional peer; keyword recall and all non-semantic tools work without an embeddings provider.
+
 ### 2026-05-22 — v0.4.2
 
-First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. All five were resolved in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field pinning safe minimums for downstream consumers. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
+First `npm audit` pass on the published package surfaced 5 vulnerabilities, all transitive through `@modelcontextprotocol/sdk@1.29.0`'s HTTP transport stack. Brain OS uses stdio transport, so the vulnerable code paths aren't exercised at runtime — but the dependencies still load with the SDK. Repository installs were repaired in v0.4.2 via `npm audit fix` plus a `package.json` `overrides` field. Details: [`CHANGELOG.md`](./CHANGELOG.md#042--2026-05-22).
 
 ## Dependency Hygiene
 
-- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml) — any vulnerability fails CI before it can reach a release
-- The `overrides` field in `package.json` pins safe minimums for known-vulnerable transitive dependencies, so downstream consumers get the patched versions on fresh install
+- `npm audit` runs on every push, every pull request, and on a weekly cron via [`.github/workflows/audit.yml`](./.github/workflows/audit.yml); Critical and High findings fail CI before release
+- Exact packed artifacts are audited in a clean consumer project. npm does not propagate a dependency package's `overrides`, so repository-only audit results are not presented as downstream protection
+- The local embeddings provider remains disabled while its dependency tree contains unresolved High-severity advisories
 - GitHub Dependabot is enabled for weekly transitive bump PRs
 
 ## Local State Considerations
 
 Brain OS state lives in `.brain/` inside the user's project. It is:
 
-- **Local-only** — never transmitted to a network endpoint by Brain OS itself
+- **Local-only** — Brain OS does not transmit your state to a network endpoint, with one exception that you switch on yourself (see below)
 - **Audit-logged** — every mutation is recorded in `.brain/audit.jsonl`
 - **Plaintext JSON** — do not store secrets, credentials, or PII in entity fields. If you need to record sensitive context, store a reference (e.g., "see 1Password item X"), not the value.
 
-If you discover Brain OS leaking, transmitting, or persisting unexpected data, that is in scope — please report.
+### Network calls
+
+The server makes exactly two kinds of outbound call. Both use HTTPS.
+
+1. **Version check, on every server start.** A request to `https://registry.npmjs.org/brain-os/latest` to compare the installed version with the latest one. It sends no Brain OS state. Like any HTTPS request, it shows the npm registry your IP address. There is currently no setting to turn it off.
+2. **OpenAI embeddings, only if you enable them.** With `BRAIN_EMBEDDINGS=openai` and an `OPENAI_API_KEY` set, the text of entities, decisions, session summaries and `semantic_recall` queries is sent to OpenAI to create embeddings. This is off by default; without it, nothing from `.brain/` leaves your machine.
+
+If you discover Brain OS leaking, transmitting, or persisting unexpected data beyond these two calls, that is in scope — please report.

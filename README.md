@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS - AI remembers conversations but forgets project state" width="100%" />
+  <img src="https://raw.githubusercontent.com/brainOS-HQ/brain-os/main/assets/hero.png" alt="Brain OS: Forget your decisions? Brain OS remembers." width="100%" />
 </p>
 
 <p align="center">
@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <strong>Local-first MCP memory server for operational project state: decisions, blockers, plans, patterns, and next moves.</strong>
+  <strong>One memory across your AI tools. Keep decisions, plans and next steps connected across ChatGPT, Claude, Cursor and other supported AI apps.</strong>
 </p>
 
 # Brain OS
@@ -30,6 +30,7 @@ AI agents are powerful inside a session, but long-running work has more state th
 - **Decisions** — log what was decided, why, what alternatives were rejected, and when to revisit
 - **Patterns** — detect recurring blockers, stale work, avoidance signals, and theme convergence
 - **Focus** — prioritize what to work on based on urgency, momentum, leverage, and staleness
+- **Verified operational state** — compare package/Git facts with claimed and desired state without changing anything
 - **Semantic recall** — search memory by meaning, not just ID
 
 Brain OS is an [MCP server](https://modelcontextprotocol.io) that works with any MCP-compatible client: Claude Code, Cursor, Zed, GitHub Copilot, OpenAI Codex, Windsurf, or any agent that speaks the protocol.
@@ -58,47 +59,83 @@ That's the wedge: structured state with enforcement, so agents stop re-opening q
 
 ## Quick start
 
+Requires Node.js 20 or newer.
+
+### 1. Connect the server
+
+**Claude Code:**
+
+```bash
+claude mcp add brain-os -- npx -y brain-os serve
+```
+
+**Cursor** (`.cursor/mcp.json`) **and other MCP clients:**
+
+```json
+{
+  "mcpServers": {
+    "brain-os": {
+      "command": "npx",
+      "args": ["-y", "brain-os", "serve"]
+    }
+  }
+}
+```
+
+VS Code uses `.vscode/mcp.json` with a `"servers"` key and `"type": "stdio"` in place of `"mcpServers"`.
+
+### 2. Set up the project, from chat or from the terminal
+
+**From chat (no terminal):** open your project and ask the agent:
+
+```
+Set up Brain OS in this project.
+```
+
+The agent calls `brain_setup`. It shows the folder and the exact files it would create, and writes nothing until you say yes. Your existing `AGENTS.md` / `CLAUDE.md` are never overwritten. If you already have your own `AGENTS.md`, the Brain OS rules go to `.claude/brain-os/AGENTS.md`, and the setup lists any of your files that need a one-line pointer to it. Nothing is written outside the project.
+
+**From the terminal:**
+
 ```bash
 # In your project
 npx brain-os init
 ```
 
-This does three things:
+Either way, setup does three things:
 
 1. **Creates a `.brain/` directory** with your entity, decision, and pattern stores.
-2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/brain:focus`, `/brain:decide`, etc. directly in Claude Code. Bare aliases (`/focus`, `/decide`, etc.) install alongside for brevity.
-3. **Drops agent-instructions pointer files** so any MCP-compatible client behaves consistently: `AGENTS.md` (canonical, cross-tool) plus thin pointer files for Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md`), Cursor (`.cursor/rules/brain-os.mdc`), Zed (`.zed/rules.md`), and Windsurf (`.windsurfrules`).
+2. **Installs slash commands** into `.claude/commands/` so you can run `/brain`, `/brain:focus`, `/brain:decide`, etc. directly in Claude Code. Bare aliases (`/focus`, `/decide`, etc.) install alongside them.
+3. **Adds agent instructions** so every MCP-compatible client behaves the same way. `AGENTS.md` is the canonical file. Thin pointer files cover Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md`), Cursor (`.cursor/rules/brain-os.mdc`), Zed (`.zed/rules.md`), and Windsurf (`.windsurfrules`).
 
-Flags:
+Flags (`brain_setup` takes the same options as `minimal` / `include_commands`):
 
-- `npx brain-os init --minimal` — install only `AGENTS.md` + `CLAUDE.md`, skip the other client pointers (clean-repo mode)
-- `npx brain-os init --no-commands` — skip slash commands (MCP server only)
-- `npx brain-os init --no-agent-instructions` — skip all agent-instructions pointer files
+- `npx brain-os init --minimal`: install only `AGENTS.md` + `CLAUDE.md` and skip the other client pointers (clean-repo mode)
+- `npx brain-os init --no-commands`: skip the slash commands (MCP server only)
+- `npx brain-os init --no-agent-instructions`: skip all agent-instructions pointer files
 
-### Connect to Claude Code
+### Check live operational state
+
+Brain OS can independently read a small, explicit set of repository facts and show drift without updating memory or project state:
 
 ```bash
-claude mcp add brain-os -- npx brain-os serve
+npx brain-os reconcile --check .
 ```
 
-### Connect to Cursor / other MCP clients
+The matching MCP tool, `operational_state_check`, observes only `package.name`, `package.version`, the current Git branch, and Git HEAD. Optional claimed state, desired state, and decision context are returned as separate layers: observations may be verified, stale, conflicting, unavailable, or different from a claim, but the checker never chooses a winner or applies a change.
 
-Add to your MCP config:
-
-```json
-{
-  "brain-os": {
-    "command": "npx",
-    "args": ["-y", "brain-os", "serve"]
-  }
-}
-```
+The report is ephemeral JSON written to stdout. It creates no fact, evidence, issue, memory, entity, decision, plan, or audit record.
 
 ### Configure semantic search (optional)
 
 The `semantic_recall` tool needs an embeddings provider. Everything else (`entity_update`, `decision_log`, `plan_*`, etc.) works without one.
 
-Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
+Brain OS does **not** install an embeddings SDK by default. This keeps the core install small and avoids pulling native ONNX/Sharp dependencies into users who do not need semantic search. Install the optional OpenAI provider beside `brain-os`, then add `BRAIN_EMBEDDINGS` to your MCP server env:
+
+```bash
+npm install brain-os openai
+```
+
+Then configure the provider in your MCP server environment:
 
 ```json
 {
@@ -106,7 +143,8 @@ Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
     "command": "npx",
     "args": ["-y", "brain-os", "serve"],
     "env": {
-      "BRAIN_EMBEDDINGS": "local"
+      "BRAIN_EMBEDDINGS": "openai",
+      "OPENAI_API_KEY": "${OPENAI_API_KEY}"
     }
   }
 }
@@ -114,12 +152,12 @@ Pick a provider by adding `BRAIN_EMBEDDINGS` to your MCP server env:
 
 | Mode | What it does | Setup |
 |------|--------------|-------|
-| `local` | Downloads a ~100MB on-device model (`Xenova/all-MiniLM-L6-v2`). Runs on your CPU. No data leaves your machine. | Just set `BRAIN_EMBEDDINGS=local`. First call to `semantic_recall` triggers the model download (~30s on good wifi). |
-| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Set `BRAIN_EMBEDDINGS=openai`, then reference your key as `"OPENAI_API_KEY": "${OPENAI_API_KEY}"` (see security note below). |
+| `local` | Temporarily unavailable while the former provider carries unresolved High-severity transitive advisories. | Use keyword recall or the OpenAI provider until an audited local backend ships. |
+| `openai` | Uses `text-embedding-3-small` via the OpenAI API. Faster than local. Costs ~$0.02 per million tokens. | Install `openai`, set `BRAIN_EMBEDDINGS=openai`, then reference `OPENAI_API_KEY` from your shell environment. |
 
-If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with this config snippet. No silent downloads, no surprise API calls.
+If `BRAIN_EMBEDDINGS` is unset, the OpenAI provider is missing, or local mode is requested, `semantic_recall` returns a clear setup error. No silent provider install, model download, or API call occurs. Core tools continue working normally.
 
-> **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell (`export OPENAI_API_KEY=sk-...` in `~/.zshrc`) and reference it in the `env` block as `"OPENAI_API_KEY": "${OPENAI_API_KEY}"`. Better yet, use `BRAIN_EMBEDDINGS=local`, which needs no key and keeps all embedding work on your machine.
+> **Never paste a raw `sk-...` key into your MCP config.** `~/.claude.json` and similar MCP config files are plaintext and easy to expose on screen or in backups. Instead, export the key once in your shell and reference it from the MCP process environment.
 
 ## Tools
 
@@ -134,15 +172,21 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 | `context_resolve` | Resolve which entity the current work belongs to, from explicit mention / alias / files / lexical signals. Deterministic and confidence-scored — routes known context, never guesses intent. |
 | `focus_get` | Get prioritized recommendations on what to work on |
 | `project_evidence_scan` | Read-only scan of a repo's native operating state (STATE.md, FLAGS, HANDOFF, ROADMAP/PLAN/TODO, git activity, dirty files) for human gates, next moves, and do-not-touch — grounds focus in repo reality. |
+| `operational_state_check` | Ephemeral read-only comparison of allowlisted package/Git facts with optional claimed and desired state; reports evidence-backed drift/conflict without applying changes. |
+| `brain_setup` | Set up Brain OS in the open project from chat. Previews the folder and exact file plan, then writes only after the user confirms (single-use preview token). Never overwrites existing instruction files. Local stdio server only. |
 | `pattern_detect` | Analyze patterns across all entities |
 | `memory_check` | Audit memory quality — flags stale data, contradictions, noise |
 | `memory_commit` | End-of-session commit — save all state changes |
 | `semantic_recall` | Search memory by meaning using natural language |
 | `audit_log` | Read the full mutation history — what changed, when, by whom |
+| `wrap_check` | Detect whether meaningful state changes have accumulated since the last wrap |
+| `wrap_auto` | Non-interactive safety-net wrap: applies low-risk fields and stages high-risk changes for review |
 | `plan_set` | Set an ordered plan for an entity — step 1 becomes active next_move |
 | `plan_advance` | Complete or skip a step (requires evidence/reason) — auto-promotes next |
 | `plan_add` | Add steps to an existing plan |
 | `plan_read` | View plan progress and current step |
+| `risk_assess` | Classify risky actions before execution, including public-release and destructive-operation risks |
+| `action_guard` | Apply built-in guard templates to common high-risk actions before proceeding |
 
 ## Slash commands
 
@@ -150,7 +194,7 @@ If `BRAIN_EMBEDDINGS` is unset, `semantic_recall` returns a clear error with thi
 
 It also installs:
 
-- **`BRAIN_OS_PROTOCOL.md`** at `.claude/brain-os/PROTOCOL.md` (project) and `~/.claude/brain-os/PROTOCOL.md` (user). The protocol governs tool routing: when an agent runs a Brain OS slash command, it reads the protocol first, then calls `entity_read`/`plan_read`/`focus_get`/etc. as primary. Pulse files become fallback only.
+- **`BRAIN_OS_PROTOCOL.md`** at `.claude/brain-os/PROTOCOL.md` (project) and `~/.claude/brain-os/PROTOCOL.md` (user; written by `npx brain-os init`, or by `brain_setup` only with `include_user_protocol=true`). The protocol governs tool routing: when an agent runs a Brain OS slash command, it reads the protocol first, then calls `entity_read`/`plan_read`/`focus_get`/etc. as primary. Pulse files become fallback only.
 - **`brain-os-mode` subagent** at `.claude/agents/brain-os-mode.md`. When the main agent delegates Brain OS work to a subagent (e.g. Claude Code's Task tool), it picks up under the same protocol — no risk of subagents falling back to generic file search.
 - **Optional routing-guard hook** at `templates/hooks/brain-os-routing-guard.py`. Opt-in PreToolUse hook that warns if pulse files are read while a `.brain/` workspace exists. Install instructions are printed by `brain-os init`.
 
@@ -223,16 +267,17 @@ Current coverage (regression + happy-path):
 - `decision_check` — keyword-only flag stays caution without embeddings (no false STOPs), asymmetric semantic comparison (rejected vs chosen facet)
 - `decision_refresh` — clears dangling `superseded_by` when status transitions away from `superseded`
 - `plan_advance` — no over-promotion when an active step already exists
-- `entity_update` — apply diff and record changes, missing-entity error, `mode_reason` required when parking
+- `entity_update` — apply diff and record changes, create missing entity, `mode_reason` required when parking, status-only updates apply, guarded ranking skips are visible
 - `semantic_recall` — throws `EmbeddingsNotConfiguredError` (not generic Error) when `BRAIN_EMBEDDINGS` is unset
+- Store resolution — fails closed in a storeless cwd instead of silently creating an empty `.brain/`
 
-Known gaps (no direct coverage yet): `focus_get` scoring, `pattern_detect` heuristics, `entity_*` happy-path edges, `memory_*`, `plan_set/add/read`, and the `brain://status` resource. Expanding the suite is on the roadmap.
+Known gaps (no direct coverage yet): `focus_get` scoring, `pattern_detect` heuristics, `memory_*`, `plan_set/add/read`, and the `brain://status` resource. Expanding the suite is on the roadmap.
 
 If you hit a bug, please open an issue with the tool, input, and output — that's the fastest path to a fix.
 
 ## Community
 
-- **Discord:** [discord.gg/9VBUGstjY](https://discord.gg/9VBUGstjY) — questions, feedback, what broke for you, what you're shipping with Brain OS
+- **Discord:** [discord.gg/MjAHMNJhcs](https://discord.gg/MjAHMNJhcs) — questions, feedback, what broke for you, what you're shipping with Brain OS
 - **Site:** [brainos-hq.com](https://brainos-hq.com)
 - **Issues:** [github.com/brainOS-HQ/brain-os/issues](https://github.com/brainOS-HQ/brain-os/issues)
 

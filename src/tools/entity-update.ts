@@ -130,15 +130,27 @@ export async function updateEntity(
     if (value === undefined) continue;
     const oldValue = (entity as unknown as Record<string, unknown>)[key];
 
-    // Ranking fields: never silently downgrade on existing entities
-    if (key === "mode" && shouldSkipRanking("mode", value as string, entity.mode, MODE_RANK)) continue;
-    if (key === "momentum" && shouldSkipRanking("momentum", value as string, entity.momentum, MOMENTUM_RANK)) continue;
-    if (key === "priority" && shouldSkipRanking("priority", value as string, entity.priority, PRIORITY_RANK)) continue;
-    if (key === "type" && shouldSkipRanking("type", value as string, entity.type, TYPE_RANK)) continue;
+    // Ranking fields: never silently downgrade on existing entities — but make
+    // the skip VISIBLE. A caller that asked for a downgrade is told it was kept,
+    // so it cannot mistake a guarded no-op for an applied change.
+    if (key === "mode" && shouldSkipRanking("mode", value as string, entity.mode, MODE_RANK)) {
+      changes.push(`mode: kept "${entity.mode}" (ignored lower-rank "${value}")`); continue;
+    }
+    if (key === "momentum" && shouldSkipRanking("momentum", value as string, entity.momentum, MOMENTUM_RANK)) {
+      changes.push(`momentum: kept "${entity.momentum}" (ignored lower-rank "${value}")`); continue;
+    }
+    if (key === "priority" && shouldSkipRanking("priority", value as string, entity.priority, PRIORITY_RANK)) {
+      changes.push(`priority: kept "${entity.priority}" (ignored lower-rank "${value}")`); continue;
+    }
+    if (key === "type" && shouldSkipRanking("type", value as string, entity.type, TYPE_RANK)) {
+      changes.push(`type: kept "${entity.type}" (ignored lower-rank "${value}")`); continue;
+    }
 
-    // status: keep existing if it's more specific (longer)
-    if (key === "status" && existing && entity.status &&
-        (value as string).length < entity.status.length) continue;
+    // status: apply any change. A genuinely identical value is a true no-op; a
+    // DIFFERENT value, even a shorter one, must apply. The old "keep the
+    // longer, more-specific status" heuristic silently dropped legitimate
+    // shorter updates from authorized local callers.
+    if (key === "status" && value === entity.status) continue;
 
     // evidence_of_progress: append to existing, never replace
     if (key === "evidence_of_progress" && existing && entity.evidence_of_progress &&

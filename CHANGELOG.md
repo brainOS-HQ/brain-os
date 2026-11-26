@@ -2,6 +2,121 @@
 
 All notable changes to Brain OS are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [0.11.2] — 2026-11-17
+
+> Data-safety fixes for the local store. No new features.
+
+### Fixed
+
+- **A damaged store file is no longer wiped by the next write.** Before, a truncated or merge-conflicted `decisions.json`, or a truncated entity file, read as empty, and the next `decision_log` or `entity_update` replaced it, losing everything in it. Now any file that exists but can't be read or parsed (including one that contains only `null`) stops the write with a `brain_store_unreadable` error, and the file keeps its bytes so it can be repaired or restored from `.brain/backups`. A missing file still reads as empty, so new stores work as before.
+- **A store folder that can't be listed is no longer treated as empty.** A `decisions` folder that could be written but not listed (for example after a permissions change) read as having no decisions, and `decision_log` replaced the existing ones. It now stops with the same error. A missing folder still lists as empty.
+- **`decision_log` with `supersedes` now saves the change.** The tool reported the old decision as superseded but saved it unchanged, so it stayed active and kept showing in `decision_check` and `entity_read`. The old decision is now saved as `superseded`, pointing to the new one. Superseding another project's decision is still refused.
+
+## [0.11.1] — 2026-11-13
+
+> Security hardening for the risk guard and the Git-reading tools. No new features.
+
+### Security
+
+- **`risk_assess` / `action_guard` no longer answer "low" and "allow" for actions they do not recognise.** An action no rule matches now returns `risk_level: "not_assessed"` (with `reversibility: "unknown"` and no forced confirmation), and `action_guard` returns `decision: "not_assessed"`, which states that it is not approval. Before, `rm -f`, `git clean -fdx`, `git checkout -- .`, `git branch -D`, `DELETE FROM`, `drop database`, `kubectl delete` and `terraform destroy` all came back as allowed.
+- The destructive rules are wider:
+  - `rm` followed by anything: flags with no target (`run rm -rf`), a target, or a target after `--`; also `xargs rm`, `find ... -delete`, `unlink`, `shred`, `rmdir` and `dd of=`.
+  - Git: `git clean` (not `-n` / `--dry-run`), `git checkout -- <path>`, `git checkout <ref> -- <path>`, `git checkout .`, `git checkout -f`, `git switch -f` / `--discard-changes`, `git restore` (not `--staged` on its own), `git branch -D`, `git stash drop` / `clear`.
+  - Data stores and infrastructure: `DELETE FROM`, `DROP TABLE` / `DATABASE` / `SCHEMA` / `COLUMN` / `INDEX` / `VIEW`, `TRUNCATE`, `FLUSHALL` / `FLUSHDB`, `kubectl delete`, `helm uninstall`, `docker ... prune`, destroy, wipe / erase / purge.
+  - Plain language: deleting or removing files, branches or stored data (when that is the thing being deleted or emptied, not an edit inside a file), and overwrite.
+  - Sending data with `curl`, `wget`, `scp` and similar tools is flagged. A credential word (key, token, secret, `.pem`, ...) counts only when the command sends data or uses a copy tool (`scp`, `sftp`, `rsync`, `nc`, `ftp`); a plain download whose URL contains such a word is not flagged.
+- `project_evidence_scan` and `operational_state_check` are harder to abuse through the scanned folder's own Git config. A folder that was unpacked or shared (not cloned) could previously make a read-only scan run a program. Now blocked: `core.fsmonitor`, hooks, the signature-verification program, content filters from `.git/config` or `.git/config.worktree`, and fetching from a partial-clone (promisor) remote (`GIT_NO_LAZY_FETCH=1`; on Git older than 2.45 such a folder gets no Git commands from either tool, and the skip is listed in `warnings`). **This reduces the risk; it does not close it.** The protection is a list of blocked settings, and two more ways through were found after the first version of this fix. Do not point these tools at a folder you do not trust; the descriptions of `project_evidence_scan`, `operational_state_check` and `decision_review`, and `SECURITY.md`, now say that `root_path` must be a trusted folder.
+- `project_evidence_scan` no longer follows symbolic links and reads at most 1 MB per state file. Skipped links are listed in `warnings`.
+- CI workflows run with a read-only token (`permissions: contents: read`).
+- Lockfile refreshed and override floors raised for moderate advisories in the MCP SDK's unused HTTP transport: `hono` 4.13.16+ and `@hono/node-server` 2.1.6+. `npm audit`: 0 vulnerabilities.
+- `SECURITY.md` lists 0.11.x as the active line, says where to report BrainOS Cloud issues, and states the two outbound network calls the server makes.
+
+### Changed
+
+- **Callers that gate on `allow` must handle a new answer.** For an action no rule matches, `risk_assess` no longer returns `risk_level: "low"` and `action_guard` no longer returns `decision: "allow"`. They return `risk_level: "not_assessed"` (with `reversibility: "unknown"`, `requires_confirmation: false`) and `decision: "not_assessed"`. That answer is neither approval nor a request to confirm: a caller that proceeded only on `allow` will now stop on these actions unless it handles `not_assessed`.
+- `project_evidence_scan`: `dirty_files` no longer lists dirty submodules (`git status` runs with `--ignore-submodules=all`), and is empty with a warning when the folder's content filters cannot be switched off safely. Git calls use `--no-optional-locks`, so a scan no longer refreshes the scanned folder's index.
+
+### Tests
+
+- 16 new regressions, 92 in total: Git config isolation (fsmonitor, content filters, worktree config, promisor remotes, the older-Git skip in both tools), symlink and size limits in the evidence scan, the guard's "not assessed" answer, the destructive rules and their exceptions (dry runs, unstaging, downloads), workflow permissions, the trusted-folder statement, and `SECURITY.md` staying on the current version.
+
+## [0.11.0] — 2026-10-31
+
+> Terminal-free project setup after connecting the server. One-click install (editor install buttons, registry listing) is separate, later work.
+
+### Added
+
+- **`brain_setup`**: an MCP tool that sets up Brain OS in the open project from chat. Ask the agent "Set up Brain OS in this project". It shows the folder and the exact files it would create, refresh, or keep, and writes only after you confirm. The store works right away, with no server restart. It is registered only by the local stdio server.
+- **Relocated instructions for projects with their own `AGENTS.md`.** Brain OS rules are written to `.claude/brain-os/AGENTS.md`, generated pointer files link there, and setup lists any of your instruction files that need a one-line Brain OS pointer. This also applies to `npx brain-os init`.
+- The "No Brain OS store found" error now mentions `brain_setup`, so agents can offer setup on their own.
+
+### Security
+
+- `brain_setup` writes only with a single-use preview token issued by the server. The token expires after 15 minutes and is bound to the folder, the options, and the file plan. Any change, or a server restart, forces a new preview and writes nothing.
+- Every planned write is checked against real paths: a symlinked project folder or `.claude/` directory cannot redirect writes outside the project. The home folder, the filesystem root, and folders outside the open workspace are refused.
+- `brain_setup` writes nothing outside the project unless `include_user_protocol=true`.
+- Raised override floors to fix the advisories reported against the MCP SDK's dependency tree: `zod` 4.6.6+ and `body-parser` 2.4.0+ (high); `@hono/node-server` 2.1.3+, `fast-uri` 3.1.9+, `ip-address` 10.7.4+, and `qs` 6.16.1+ (moderate). `npm audit`: 0 vulnerabilities.
+
+### Tests
+
+- 13 new `brain_setup` regressions, 76 in total. They cover the preview and token flow (forged, reused, stale, and changed-plan tokens), symlink escapes, refused targets, relocated instructions, and preserved user files.
+- Verified with real agents: Claude Code, and Cursor (Grok 4.6) in a project with its own `AGENTS.md` / `CLAUDE.md`. VS Code Copilot is untested.
+
+## [0.10.0] — 2026-10-01
+
+> Verified Operational State (read-only) plus public-action risk hardening. No private reconciliation, Vault, governor, cloud implementation, or automatic state mutation is included.
+
+### Added
+
+- **`operational_state_check`** — an ephemeral, read-only MCP tool that observes a closed canary set (`package.name`, `package.version`, Git branch, and Git HEAD), compares it with optional claimed and desired state, and reports verified, drift, stale, conflict, or unavailable results with evidence pointers. Decision context remains visibly classified as human judgment.
+- **`brain-os reconcile --check [path]`** — CLI access to the same allowlisted verifier. It prints JSON to stdout and writes no repository or Brain OS state.
+- Boundary tests for package-file symlink escapes, bounded inputs, repeated deterministic checks, and zero persistent writes.
+
+### Security
+
+- Hardened `risk_assess` so a declared public destination or clear natural-language branch, commit, tag, repository, remote, or GitHub push cannot bypass the confirmation gate merely because the caller omitted the literal `git push` command.
+- Preserved the `0.9.2` dependency baseline: Node.js 20+, the patched MCP SDK and overrides, no default embedding provider, and local embeddings disabled while their former provider retains unresolved High-severity advisories.
+- Refreshed the exact lockfile to patched `fast-uri@3.1.8`, `hono@4.13.11`, `ip-address@10.7.2`, and `qs@6.16.0` resolutions after new advisories appeared; the candidate dependency graph audits clean.
+
+### Tests
+
+- Added regressions proving both natural-language branch pushes and literal `git push` commands remain confirmation-gated.
+- Added read-only operational-state coverage for verification, drift, stale claims, conflicting claims, unavailable sources, judgment separation, deterministic repeated checks, symlink containment, and no-write behavior.
+
+## [0.9.2] — 2026-08-05
+
+> Security maintenance release. No new product features.
+
+### Security
+
+- Removed `@huggingface/transformers` from package metadata and temporarily disabled `BRAIN_EMBEDDINGS=local`. The provider's current dependency tree includes unresolved High-severity advisories through native ONNX/Sharp dependencies; local mode now fails closed with a clear explanation instead of recommending an unsafe installation.
+- Kept OpenAI embeddings as an explicit optional peer. Keyword recall and all non-semantic Brain OS tools continue to work without an embeddings provider.
+- Reduced the default dependency installation and refreshed the MCP SDK, lockfile, and security overrides so default and packed-consumer installs do not inherit the removed native dependency tree.
+- Hardened `project_evidence_scan` Git subprocesses by stripping inherited `GIT_*` routing and configuration variables before repository inspection, preventing ambient Git state from redirecting fixture or scan operations.
+
+### Compatibility
+
+- Node.js 20 or newer is now required. Under Node 18, the MCP SDK dependency range resolves an older `@hono/node-server` release affected by `GHSA-frvp-7c67-39w9`; the patched adapter requires Node 20.
+- Users who previously selected `BRAIN_EMBEDDINGS=local` must temporarily use keyword recall or install the optional OpenAI provider until an audited local backend is available.
+
+### Tests
+
+- Added regressions for the reduced default dependency set, unavailable local-provider behavior, optional OpenAI setup errors, and complete `GIT_*` environment isolation.
+
+## [0.9.1] — 2026-07-06
+
+> Patch release: maintenance fixes only. No new private/cloud dogfooding features.
+
+### Fixed
+
+- `entity_update` no longer silently drops a status update just because the new status text is shorter than the old one. Different status values now apply; genuinely identical values remain no-ops.
+- Guarded ranking downgrades (`mode`, `momentum`, `priority`, `type`) are now reported as kept/ignored instead of silently returning success with no signal.
+- Store resolution now fails closed when no `.brain/` store can be found and `BRAIN_DIR` is not set. The server no longer silently creates an empty `.brain/` in an arbitrary launch directory; the error points users to `BRAIN_DIR`, starting from a Brain OS workspace, or `npx brain-os init`.
+
+### Tests
+
+- Added regression coverage for the status-only update, visible ranking downgrade, and storeless-cwd fail-closed behavior.
+
 ## [0.9.0] — 2026-06-07
 
 > Minor release: **auto-wrap.** Brain OS now catches session state before it's lost — to context compaction or a closed terminal — instead of relying on you to remember to run `/wrap`. Plus alias-exclusivity enforcement and two new pipeline commands.

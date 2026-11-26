@@ -7,8 +7,12 @@ export interface ActionGuardInput {
   entity_id?: string;
 }
 
+// "not_assessed": no Brain OS rule covered the action. It is neither approval
+// nor a demand for confirmation; the caller falls back to its own rules.
+export type GuardDecision = "allow" | "ask" | "block" | "not_assessed";
+
 export interface ActionGuardResult {
-  decision: "allow" | "ask" | "block";
+  decision: GuardDecision;
   message: string;
   required_confirmation?: "explicit";
   matched_rule: string;
@@ -17,7 +21,7 @@ export interface ActionGuardResult {
 interface PolicyRule {
   name: string;
   condition: (a: RiskAssessResult, action_type: string) => boolean;
-  decision: "allow" | "ask" | "block";
+  decision: GuardDecision;
   message: string;
   required_confirmation?: "explicit";
 }
@@ -95,6 +99,14 @@ const POLICY: PolicyRule[] = [
     condition: (a) => a.risk_level === "medium" && a.requires_confirmation,
     decision: "ask",
     message: "This action requires confirmation. Review the risk assessment before continuing.",
+  },
+  {
+    name: "not_assessed",
+    condition: (a) => a.risk_level === "not_assessed",
+    decision: "not_assessed",
+    message:
+      "No Brain OS rule matched this action, so Brain OS has no opinion on it. This is not approval. " +
+      "Use your own judgment and your host's normal confirmation rules.",
   },
   {
     name: "allow",

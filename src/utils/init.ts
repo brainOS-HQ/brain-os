@@ -1,6 +1,6 @@
 import { mkdir, writeFile, readdir, copyFile, stat, readFile } from "fs/promises";
-import { join, dirname } from "path";
-import { existsSync } from "fs";
+import { join, dirname, relative, sep } from "path";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { today } from "./staleness.js";
@@ -88,7 +88,7 @@ interface ProtocolInstallResult {
   userPreserved: boolean;
 }
 
-async function installProtocol(targetDir: string): Promise<ProtocolInstallResult> {
+async function installProtocol(targetDir: string, withUserProtocol: boolean): Promise<ProtocolInstallResult> {
   const templateRoot = join(__dirname, "..", "..", "templates");
   const srcPath = join(templateRoot, "BRAIN_OS_PROTOCOL.md");
 
@@ -113,6 +113,8 @@ async function installProtocol(targetDir: string): Promise<ProtocolInstallResult
   result.projectInstalled = true;
 
   // User install: only if missing (don't clobber user customizations).
+  // Skipped entirely when the caller opts out of writes outside the project.
+  if (!withUserProtocol) return result;
   if (existsSync(userPath)) {
     result.userPreserved = true;
   } else {
@@ -211,6 +213,46 @@ interface AgentInstructionsResult {
   installed: string[];
   preserved: string[];
   skipped_minimal: string[];
+  canonical: string;          // where the Brain OS rules live (project-relative)
+  needsIntegration: string[]; // preserved files with no Brain OS rules in them
+}
+
+// First line of the canonical template body; identifies an AGENTS.md written by Brain OS.
+const BRAIN_OS_AGENTS_MARKER = "Agent operating instructions for projects using Brain OS.";
+// Fallback home for the canonical rules when the project already has its own AGENTS.md.
+const RELOCATED_AGENTS_REL = ".claude/brain-os/AGENTS.md";
+
+function mentionsBrainOs(path: string): boolean {
+  try {
+    return readFileSync(path, "utf-8").includes("Brain OS");
+  } catch {
+    return false;
+  }
+}
+
+// AGENTS.md at the root is ours to point at only if it's missing or Brain OS wrote it.
+// A user's own AGENTS.md is preserved, so the rules go to RELOCATED_AGENTS_REL instead.
+function canonicalAgentsRel(targetDir: string): string {
+  const rootAgents = join(targetDir, "AGENTS.md");
+  if (!existsSync(rootAgents)) return "AGENTS.md";
+  try {
+    if (readFileSync(rootAgents, "utf-8").includes(BRAIN_OS_AGENTS_MARKER)) return "AGENTS.md";
+  } catch {
+    // unreadable — treat as the user's
+  }
+  return RELOCATED_AGENTS_REL;
+}
+
+// Point a pointer template at wherever the canonical rules actually live.
+function retargetPointer(content: string, destRel: string, canonicalRel: string): string {
+  if (canonicalRel === "AGENTS.md") return content;
+  const link = relative(dirname(join("/", destRel)), join("/", canonicalRel)).split(sep).join("/");
+  const LINK = "\u0000link\u0000";
+  return content
+    .replace(/\]\(\.{1,2}\/AGENTS\.md\)/g, `](${LINK})`)
+    .replace(/`AGENTS\.md` at the project root/g, "`AGENTS.md`")
+    .replace(/AGENTS\.md/g, canonicalRel)
+    .split(LINK).join(link.startsWith("../") ? link : `./${link}`);
 }
 
 async function installAgentInstructions(
@@ -218,9 +260,23 @@ async function installAgentInstructions(
   minimal: boolean,
 ): Promise<AgentInstructionsResult> {
   const templatesRoot = join(__dirname, "..", "..", "templates", "agent-instructions");
-  const result: AgentInstructionsResult = { installed: [], preserved: [], skipped_minimal: [] };
+  const canonical = canonicalAgentsRel(targetDir);
+  const result: AgentInstructionsResult = {
+    installed: [], preserved: [], skipped_minimal: [], canonical, needsIntegration: [],
+  };
 
   if (!existsSync(templatesRoot)) return result;
+
+  if (canonical !== "AGENTS.md") {
+    // Brain OS-owned copy: refreshed every run, like PROTOCOL.md.
+    const srcPath = join(templatesRoot, "AGENTS.md");
+    if (existsSync(srcPath)) {
+      const destPath = join(targetDir, canonical);
+      await mkdir(dirname(destPath), { recursive: true });
+      await copyFile(srcPath, destPath);
+      result.installed.push(canonical);
+    }
+  }
 
   for (const spec of AGENT_INSTRUCTIONS) {
     if (minimal && !spec.minimal) {
@@ -232,10 +288,12 @@ async function installAgentInstructions(
     const destPath = join(targetDir, spec.destRel);
     if (existsSync(destPath)) {
       result.preserved.push(spec.displayName);
+      if (!mentionsBrainOs(destPath)) result.needsIntegration.push(spec.displayName);
       continue;
     }
     await mkdir(dirname(destPath), { recursive: true });
-    await copyFile(srcPath, destPath);
+    const content = await readFile(srcPath, "utf-8");
+    await writeFile(destPath, retargetPointer(content, spec.destRel, canonical));
     result.installed.push(spec.displayName);
   }
 
@@ -246,12 +304,103 @@ export interface InitOptions {
   withCommands?: boolean;
   withAgentInstructions?: boolean;
   minimal?: boolean;
+  // Write ~/.claude/brain-os/PROTOCOL.md (outside the project). Default true for the CLI.
+  withUserProtocol?: boolean;
+  // "mcp" drops the CLI-only footer (MCP config snippet, star request).
+  surface?: "cli" | "mcp";
+}
+
+export interface InitPlan {
+  targetDir: string;
+  brainDir: string;
+  storeExists: boolean;
+  create: string[];    // paths that will be created
+  refresh: string[];   // Brain OS-owned files that will be overwritten with the current version
+  preserve: string[];  // paths that already exist and will be left untouched
+  outsideProject: string[]; // paths outside targetDir that will be written
+  needsIntegration: string[]; // preserved instruction files with no Brain OS rules
+  canonicalInstructions: string; // where the Brain OS agent rules will live
+  writePaths: string[]; // absolute in-project paths behind create + refresh
+}
+
+// Dry run of initBrain: what would be created, refreshed, or left alone. Never writes.
+export function planInit(targetDir: string, options: InitOptions = {}): InitPlan {
+  const withCommands = options.withCommands !== false;
+  const withAgentInstructions = options.withAgentInstructions !== false;
+  const minimal = options.minimal === true;
+  const withUserProtocol = options.withUserProtocol !== false;
+  const templatesRoot = join(__dirname, "..", "..", "templates");
+  const brainDir = join(targetDir, ".brain");
+
+  const plan: InitPlan = {
+    targetDir,
+    brainDir,
+    storeExists: existsSync(brainDir),
+    create: [],
+    refresh: [],
+    preserve: [],
+    outsideProject: [],
+    needsIntegration: [],
+    canonicalInstructions: canonicalAgentsRel(targetDir),
+    writePaths: [],
+  };
+  const consider = (destPath: string, display: string) => {
+    if (existsSync(destPath)) {
+      plan.preserve.push(display);
+    } else {
+      plan.create.push(display);
+      plan.writePaths.push(destPath);
+    }
+  };
+  const refreshOrCreate = (rel: string) => {
+    const destPath = join(targetDir, rel);
+    (existsSync(destPath) ? plan.refresh : plan.create).push(rel);
+    plan.writePaths.push(destPath);
+  };
+
+  consider(brainDir, ".brain/");
+
+  if (withCommands) {
+    for (const cmd of COMMANDS) {
+      if (!existsSync(join(templatesRoot, "commands", cmd.template))) continue;
+      consider(join(targetDir, ".claude", "commands", cmd.rel), `.claude/commands/${cmd.rel}`);
+    }
+  }
+
+  if (existsSync(join(templatesRoot, "BRAIN_OS_PROTOCOL.md"))) {
+    refreshOrCreate(".claude/brain-os/PROTOCOL.md");
+    const userPath = join(homedir(), ".claude", "brain-os", "PROTOCOL.md");
+    if (withUserProtocol && !existsSync(userPath)) plan.outsideProject.push(userPath);
+  }
+
+  const agentsTemplateDir = join(templatesRoot, "agents");
+  if (existsSync(agentsTemplateDir)) {
+    for (const entry of readdirSync(agentsTemplateDir)) {
+      if (!entry.endsWith(".md")) continue;
+      consider(join(targetDir, ".claude", "agents", entry), `.claude/agents/${entry}`);
+    }
+  }
+
+  if (withAgentInstructions) {
+    if (plan.canonicalInstructions !== "AGENTS.md") refreshOrCreate(plan.canonicalInstructions);
+    for (const spec of AGENT_INSTRUCTIONS) {
+      if (minimal && !spec.minimal) continue;
+      if (!existsSync(join(templatesRoot, "agent-instructions", spec.template))) continue;
+      const destPath = join(targetDir, spec.destRel);
+      consider(destPath, spec.displayName);
+      if (existsSync(destPath) && !mentionsBrainOs(destPath)) plan.needsIntegration.push(spec.displayName);
+    }
+  }
+
+  return plan;
 }
 
 export async function initBrain(targetDir: string, options: InitOptions = {}): Promise<string> {
   const withCommands = options.withCommands !== false;
   const withAgentInstructions = options.withAgentInstructions !== false;
   const minimal = options.minimal === true;
+  const withUserProtocol = options.withUserProtocol !== false;
+  const surface = options.surface ?? "cli";
   const brainDir = join(targetDir, ".brain");
 
   const alreadyInitialized = existsSync(brainDir);
@@ -281,7 +430,7 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     install = await installCommands(targetDir);
   }
 
-  const protocol = await installProtocol(targetDir);
+  const protocol = await installProtocol(targetDir, withUserProtocol);
   const agents = await installAgents(targetDir);
   const agentInstructions: AgentInstructionsResult | null = withAgentInstructions
     ? await installAgentInstructions(targetDir, minimal)
@@ -367,11 +516,16 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     if (agentInstructions.installed.length > 0) {
       output.push(`Agent instructions installed (${agentInstructions.installed.length}):`);
       for (const name of agentInstructions.installed) output.push(`    ${name}`);
-      output.push("    AGENTS.md is canonical. Per-client files are thin pointers.");
+      output.push(`    ${agentInstructions.canonical} is canonical. Per-client files are thin pointers.`);
     }
     if (agentInstructions.preserved.length > 0) {
       output.push("");
       output.push(`Agent instructions preserved (already present): ${agentInstructions.preserved.join(", ")}`);
+    }
+    if (agentInstructions.needsIntegration.length > 0) {
+      output.push("");
+      output.push(`Needs a Brain OS line (your own file, left untouched): ${agentInstructions.needsIntegration.join(", ")}`);
+      output.push(`    Add: "This project uses Brain OS. Follow ${agentInstructions.canonical}."`);
     }
     if (agentInstructions.skipped_minimal.length > 0) {
       output.push("");
@@ -406,6 +560,13 @@ export async function initBrain(targetDir: string, options: InitOptions = {}): P
     output.push(`    ${hook.sessionEnd.templatePath}`);
     output.push("    Add to .claude/settings.local.json under hooks.SessionEnd");
     output.push("    /start will surface unconfirmed checkpoints next session for review.");
+  }
+
+  if (surface === "mcp") {
+    output.push("");
+    output.push("Ready.");
+    output.push("");
+    return output.join("\n");
   }
 
   output.push("");

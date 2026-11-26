@@ -24,6 +24,24 @@ export function assertSafeId(id: unknown, kind: string): asserts id is string {
 let cachedBrainDir: string | null = null;
 let mcpServerRef: McpServer | null = null;
 
+// Fail-closed store resolution: the server must NEVER invent a store.
+// Falling back to join(cwd, ".brain") created empty stray stores wherever the
+// MCP server happened to start from, and tools then answered from that wrong
+// store. Creation is only legitimate via `brain-os init`, a user-confirmed brain_setup call, or explicit BRAIN_DIR.
+export class BrainStoreNotFoundError extends Error {
+  constructor(searchedFrom: string) {
+    super(
+      `No Brain OS store found (searched ${searchedFrom} and its parents; ` +
+      `BRAIN_DIR is not set). Refusing to create one implicitly. To fix: ` +
+      `set BRAIN_DIR to your existing .brain directory in the MCP server config, ` +
+      `start the session from inside a Brain OS workspace, ` +
+      `call the brain_setup tool (asks the user to confirm the project folder first), ` +
+      `or run \`npx brain-os init\` in the project root to create a new store.`
+    );
+    this.name = "BrainStoreNotFoundError";
+  }
+}
+
 function walkUpForBrain(startDir: string): string | null {
   let dir = startDir;
   while (true) {
@@ -56,11 +74,41 @@ async function resolveBrainDir(): Promise<string> {
   const walkUpResult = walkUpForBrain(process.cwd());
   if (walkUpResult) return walkUpResult;
 
-  return join(process.cwd(), ".brain");
+  throw new BrainStoreNotFoundError(process.cwd());
 }
 
 export function registerMcpServer(server: McpServer): void {
   mcpServerRef = server;
+}
+
+// Workspace folders the client exposes via MCP roots. null = no server
+// registered or the client doesn't support roots.
+export async function listFileRoots(): Promise<string[] | null> {
+  if (!mcpServerRef) return null;
+  try {
+    const result = await mcpServerRef.server.listRoots();
+    return (result.roots ?? [])
+      .filter((root) => root.uri.startsWith("file://"))
+      .map((root) => fileURLToPath(root.uri));
+  } catch {
+    return null;
+  }
+}
+
+// Existing store if one resolves, else null. Never creates one.
+export async function findExistingBrainDir(): Promise<string | null> {
+  try {
+    return await initBrainDir();
+  } catch (e) {
+    if (e instanceof BrainStoreNotFoundError) return null;
+    throw e;
+  }
+}
+
+// Point this process at a store that was just created by an explicit,
+// user-confirmed setup, so tools work without restarting the server.
+export function setBrainDir(brainDir: string): void {
+  cachedBrainDir = brainDir;
 }
 
 export async function initBrainDir(): Promise<string> {
@@ -71,10 +119,9 @@ export async function initBrainDir(): Promise<string> {
 
 export function getBrainDir(): string {
   if (!cachedBrainDir) {
-    cachedBrainDir =
-      process.env.BRAIN_DIR ??
-      walkUpForBrain(process.cwd()) ??
-      join(process.cwd(), ".brain");
+    const resolved = process.env.BRAIN_DIR ?? walkUpForBrain(process.cwd());
+    if (!resolved) throw new BrainStoreNotFoundError(process.cwd());
+    cachedBrainDir = resolved;
   }
   return cachedBrainDir;
 }
@@ -103,13 +150,40 @@ export async function ensureDirs(): Promise<void> {
   }
 }
 
-export async function readJsonFile<T>(path: string): Promise<T | null> {
-  try {
-    const content = await readFile(path, "utf-8");
-    return JSON.parse(content) as T;
-  } catch {
-    return null;
+/**
+ * A store file exists but cannot be read or parsed. Writers must stop: treating
+ * it as empty would replace the file and silently drop everything in it (a
+ * truncated decisions.json, a sync-conflict line in memories.json). The file is
+ * left untouched so it can be repaired or restored from .brain/backups.
+ */
+export class BrainStoreCorruptError extends Error {
+  constructor(public readonly path: string, reason: string) {
+    super(
+      `brain_store_unreadable: ${path} could not be read (${reason}). Nothing was changed. ` +
+      `Repair the file or restore it from .brain/backups, then retry.`,
+    );
+    this.name = "BrainStoreCorruptError";
   }
+}
+
+/** null only when the file does not exist; any other failure throws. */
+export async function readJsonFile<T>(path: string): Promise<T | null> {
+  let content: string;
+  try {
+    content = await readFile(path, "utf-8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new BrainStoreCorruptError(path, (e as NodeJS.ErrnoException).code ?? "read failed");
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(content);
+  } catch {
+    throw new BrainStoreCorruptError(path, "invalid JSON");
+  }
+  // A literal `null` would read as "missing" and be overwritten the same way.
+  if (data === null) throw new BrainStoreCorruptError(path, "file contains null");
+  return data as T;
 }
 
 export async function writeJsonFile(path: string, data: unknown): Promise<void> {
@@ -134,11 +208,16 @@ export async function writeJsonFile(path: string, data: unknown): Promise<void> 
   }
 }
 
+/** [] only when the directory does not exist; any other failure throws. */
 export async function listJsonFiles(dir: string): Promise<string[]> {
+  let files: string[];
   try {
-    const files = await readdir(dir);
-    return files.filter((f) => f.endsWith(".json")).map((f) => join(dir, f));
-  } catch {
-    return [];
+    files = await readdir(dir);
+  } catch (e) {
+    // An unlistable directory is not an empty one: callers merge into what
+    // they list, so [] here would drop every existing row on the next write.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new BrainStoreCorruptError(dir, (e as NodeJS.ErrnoException).code ?? "list failed");
   }
+  return files.filter((f) => f.endsWith(".json")).map((f) => join(dir, f));
 }
